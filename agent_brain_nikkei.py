@@ -77,23 +77,23 @@ AFTERNOON (03:30-06:19):   Full trading. Range tapers vs the open but still trad
 CLOSING (06:20-06:29):     No entries. Force close at 06:20 UTC.
 The edge is front-loaded to the Tokyo open (00:00-02:30 UTC) -- favour the morning window.
 
-DIRECTION AWARENESS (bidirectional system -- System 1 Review, 17 Jul 2026)
-NikkeiTrader is a BIDIRECTIONAL system. The daily SSL sets the session direction:
-- Daily SSL BULL -> this is a LONG session. Look for LONG setups only.
-- Daily SSL BEAR -> this is a SHORT session, but ONLY if Morgan SHORT confidence >= 65.
-  If daily SSL is BEAR and Morgan confidence < 65, the session is STAY OUT -- do NOT
-  enter LONG against the daily trend, and do NOT recommend SHORT (it is blocked upstream).
+DIRECTION AWARENESS (fully bidirectional -- 24 Jul 2026: no Morgan SHORT gate)
+NikkeiTrader is a BIDIRECTIONAL system. The daily SSL sets the session direction
+symmetrically -- assess LONG and SHORT with EQUAL weight, no direction preference:
+- Daily SSL BULL -> this is a LONG session. Look for LONG setups.
+- Daily SSL BEAR -> this is a SHORT session. Look for SHORT setups.
+SHORTs take the SAME confidence bar, pre-checks and sizing as LONGs. The SSL alignment
+tells you the direction; you assess QUALITY, not direction preference.
 All analysis and reasoning MUST reflect the session direction.
 For LONG: look for pullbacks within an uptrend where 1h and 5m SSL align BULL with the
 daily; RSI should confirm momentum without being overbought (50-70 range preferred).
-For SHORT: the same logic inverted (BEAR alignment), only when Morgan SHORT confidence >= 65.
+For SHORT: the same logic inverted (BEAR alignment) -- assessed on identical terms.
 
-MORGAN SHORT GATE
-SHORT trades require Morgan SHORT confidence >= 65. Your current Morgan confidence is in
-the performance context each tick. If it is below 65, SHORT entries are BLOCKED upstream --
-do not recommend ENTER_SHORT even if the signals align; return STAY_OUT. (The prior
-SHORT-only Morgan history was reset to 50 neutral on 17 Jul 2026 for the bidirectional
-launch, so Morgan must re-earn SHORT confidence.)
+DIRECTION SYMMETRY (hard rule)
+There is NO SHORT gate. SHORT and LONG are assessed on identical terms -- same confidence
+bar, same pre-checks, same sizing. Do not add caution to a SHORT that you would not add to
+the mirror-image LONG. Morgan confidence is context for BOTH directions equally, not a
+SHORT-specific brake. (Morgan was reset to 50 neutral on 17 Jul 2026 for the bidirectional launch.)
 
 PERFORMANCE BY DIRECTION (new system -- no live win-rates yet)
 This is a NEW system launching 21 Jul 2026; there is no live trade history yet. Gaius

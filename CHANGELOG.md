@@ -2,6 +2,20 @@
 
 All notable changes to NikkeiTrader (Albion Trading Desk). All times UTC.
 
+## [1.2.0] - 2026-07-24
+### Changed — fully bidirectional (remove Morgan SHORT gate) (Cody, Nick's direct order)
+- Removed the inline **Morgan SHORT gate** from `main_nikkeitrader.py`: the block that
+  required Morgan confidence ≥65 for any `proposed_direction == "SHORT"` (and recorded a
+  `MORGAN_SHORT_GATE` phantom on block) is deleted. SHORTs now take the SAME confidence
+  bar, pre-checks and sizing as LONGs.
+- `proposed_direction` logic already symmetric (daily SSL BULL→LONG, BEAR→SHORT; NEUTRAL
+  only on None/NaN daily) — no change needed.
+- `agent_brain_nikkei.py`: DIRECTION AWARENESS made direction-neutral; removed the
+  "SHORT requires Morgan ≥65" MORGAN SHORT GATE section and replaced with a DIRECTION
+  SYMMETRY hard rule (LONG/SHORT assessed on identical terms).
+- Three-zone Morgan HARD BLOCK (<30 suspends new entries) left fully intact — separate
+  feature, unchanged.
+
 ## [1.0.0] - 2026-07-21
 ### Added — initial build (Cody, commissioned by Nick & Archie)
 - New original desk system: **NikkeiTrader**, Japan 225 CFD on Capital.com, port 5008,

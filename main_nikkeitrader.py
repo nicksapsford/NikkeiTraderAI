@@ -438,41 +438,6 @@ def run_candle_tick(
                             indicators_1d=ind_1d, indicators_1h=ind_1h, indicators_5m=ind_5m)
             return
 
-    # Morgan SHORT gate (System 1 Review 17 Jul): SHORT entries require Morgan
-    # confidence >= 65. Sits between the Lancelot pass and the Arthur call. Below
-    # threshold we STAY OUT and record the phantom SHORT -- never entering LONG
-    # against a BEAR daily trend.
-    if proposed_direction == "SHORT":
-        _morgan = get_perf_dashboard_dict().get("confidence_score")
-        if _morgan is None:
-            _morgan = 50
-        if _morgan < 65:
-            log.info("SHORT blocked -- Morgan confidence below 65 threshold (current: %s)", _morgan)
-            _push_dashboard(stanley, account, pre_checks=individual_checks,
-                            phase=phase, nikkei_level=nikkei_price, calendar_summary=cal_summary,
-                            connector_status=connector_status, panel_mode="pre_checks",
-                            trend_1d=trend_1d, trend_1h=sig_1h, signal_5m=sig_5m,
-                            indicators_1d=ind_1d, indicators_1h=ind_1h, indicators_5m=ind_5m)
-            try:
-                try:
-                    _guin_score = guinevere_news.fetch_nikkei_sentiment().get("score")
-                except Exception:
-                    _guin_score = None
-                _snap = phantom_tracker.build_snapshot(
-                    ind_1d, ind_1h, ind_5m,
-                    morgan_score=_morgan, session=phase, guinevere_score=_guin_score)
-            except Exception as _se:
-                log.warning("phantom snapshot (Morgan gate) failed: %s", _se)
-                _snap = None
-            try:
-                phantom_tracker.record_decision(
-                    market="Nikkei", direction_blocked="SHORT", price_at_decision=nikkei_price,
-                    confidence=None, reason_for_stay_out="MORGAN_SHORT_GATE",
-                    get_price_fn=lambda m: _get_price(ig, feed), indicators=_snap)
-            except Exception as _exc:
-                log.warning("phantom record (Morgan gate) failed: %s", _exc)
-            return
-
     # Guinevere news context for Arthur (cached fetch; reused by the post-decision
     # confidence adjustment below). Change 4, System 1 Review.
     try:
