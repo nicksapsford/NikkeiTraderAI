@@ -422,6 +422,22 @@ def run_candle_tick(
             account.kill_switch_tier = 0
         return
 
+    # ── Zone-3 MORGAN HARD BLOCK (three-zone model, 24 Jul 2026, Nick's direct order) ──
+    # Below 30, suspend NEW entries and let Gaius intervene. Existing open positions are
+    # unaffected -- when in a trade we fall through so Arthur still manages HOLD/EXIT.
+    # (Zone 2, 30-49, is WARNING only: trading continues, no code restriction here.)
+    if not stanley.in_trade:
+        _morgan_now = get_perf_dashboard_dict().get("confidence_score")
+        if performance_nikkei.morgan_hard_block(50 if _morgan_now is None else _morgan_now):
+            log.warning("MORGAN HARD BLOCK: confidence %s < 30 -- new entries suspended "
+                        "(Gaius intervention active)", _morgan_now)
+            _push_dashboard(stanley, account, pre_checks=individual_checks,
+                            phase=phase, nikkei_level=nikkei_price, calendar_summary=cal_summary,
+                            connector_status=connector_status, panel_mode="pre_checks",
+                            trend_1d=trend_1d, trend_1h=sig_1h, signal_5m=sig_5m,
+                            indicators_1d=ind_1d, indicators_1h=ind_1h, indicators_5m=ind_5m)
+            return
+
     # Morgan SHORT gate (System 1 Review 17 Jul): SHORT entries require Morgan
     # confidence >= 65. Sits between the Lancelot pass and the Arthur call. Below
     # threshold we STAY OUT and record the phantom SHORT -- never entering LONG

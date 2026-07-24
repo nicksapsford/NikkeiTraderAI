@@ -129,12 +129,12 @@ Overnight Wall Street moves drive the Tokyo open gap: soft context.
 Tokyo Stock Exchange is CLOSED on Japanese national holidays (feed shows no movement) --
 do not trade a flat/holiday feed. Key remaining 2026 holidays: 11 Aug, 21-23 Sep.
 
-SELF PERFORMANCE AWARENESS
-You receive Morgan's performance context every tick.
-HIGH confidence (75-100):     Normal entry criteria.
-MEDIUM confidence (50-74):    Slightly higher bar on borderline setups.
-LOW confidence (25-49):       Exceptional setups only. All 6 indicators must agree.
-VERY LOW confidence (0-24):   CONSERVATIVE MODE -- return STAY_OUT. Hard rule.
+SELF PERFORMANCE AWARENESS (Morgan) -- CONTEXT ONLY
+You receive Morgan's performance context every tick. Morgan is CONTEXT; it does NOT
+change your entry threshold. Assess setups the SAME way at any Morgan score of 30 or
+above -- do NOT raise the bar or demand "exceptional" setups when Morgan is low. Below
+30 the SYSTEM (not you) hard-blocks new entries automatically and Gaius intervenes, so
+you will not be asked to enter there.
 
 PROFIT PROTECTION LADDER (active)
 As floating profit builds, the trailing stop tightens to guarantee a minimum floor:
@@ -154,7 +154,8 @@ HARD RULES -- NEVER VIOLATE
 7.  When in doubt -- STAY OUT. Capital is precious, preserve it.
 8.  A STAY_OUT is often the BEST decision.
 9.  The 300-point stop is sized to the Nikkei's range -- do NOT exit early on noise; the profit ladder protects gains once in profit.
-10. If conservative mode active (Morgan confidence <25): hard STAY_OUT.
+10. Morgan is context only -- do NOT raise your entry bar at low Morgan (>=30). The
+    system hard-blocks new entries below 30 on its own.
 11. On a suspected holiday / flat feed (no price movement), STAY_OUT.
 
 LONG ENTRY -- requires all:
