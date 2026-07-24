@@ -240,6 +240,15 @@ class PaperTraderNikkei:
         """Close the current paper trade, update capital, save CSV."""
         if self.current_trade is None:
             return None
+        # stop-fill fidelity (Job 10, 24 Jul 2026, Nick-confirmed 23 Jul)
+        # On a STOP_LOSS exit, fill at the stop level rather than the observed
+        # price (which may have gapped through the stop between 30-second
+        # monitor checks). Feed the clamped fill into the P&L computation below.
+        if reason == "STOP_LOSS":
+            if self.current_trade.direction == "LONG":
+                price = max(self.current_trade.stop_loss, price)
+            else:
+                price = min(self.current_trade.stop_loss, price)
         from strategy_nikkei import close_trade
         trade = close_trade(self.current_trade, price, reason)
         self.capital_gbp = round(self.capital_gbp + trade.pnl_gbp, 2)
