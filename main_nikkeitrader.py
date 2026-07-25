@@ -75,7 +75,7 @@ log = logging.getLogger("NikkeiTrader.Main")
 
 from agent_brain_nikkei   import get_trading_decision, format_decision_for_display
 from calendar_nikkei      import check_calendar, is_hard_blocked, get_calendar_context
-from data_feed_nikkei     import NikkeiDataFeed, get_session_phase, is_market_open, minutes_until_next_open
+from data_feed_nikkei     import NikkeiDataFeed, get_session_phase, is_market_open, minutes_until_next_open, CLOSED
 from capitalcom_connector import CapitalComConnector, Nikkei_EPIC
 from notifier_nikkei      import (
     notify_system_startup, notify_system_shutdown,
@@ -850,12 +850,19 @@ def main() -> None:
                 _interruptible_sleep(HEARTBEAT_INTERVAL)
                 continue
 
-            # Outside market window entirely
+            # Outside the Tokyo cash session entirely.
+            # BUG FIX (25 Jul 2026): the old guard idled whenever the UTC hour was
+            # < 8 or >= 17 -- a London daytime-session window copied from the other
+            # desks. The Nikkei cash session is 00:00-06:30 UTC, so that gate matched
+            # the ENTIRE session (hour 0-6 < 8) every night and `continue`d before the
+            # candle tick ever ran: no feed.refresh(), no indicator computation, blank
+            # SSL/RSI/MACD/TMO, Lancelot permanently blocked. Gate on the real Tokyo
+            # phase instead (get_session_phase already computes 00:00-06:30 UTC).
             hour = now_sess.hour
-            if hour < 8 or hour >= 17:
+            if get_session_phase(now_utc) == CLOSED:
                 mins = minutes_until_next_open()
                 sleep_sec = max(60, min(mins * 60, HEARTBEAT_INTERVAL)) if mins else HEARTBEAT_INTERVAL
-                log.info("Market closed (UK %s) -- next open in %s min",
+                log.info("Market closed (UTC %s) -- next open in %s min",
                          now_sess.strftime("%H:%M"), mins if mins else "?")
                 _interruptible_sleep(sleep_sec)
                 _force_close_done = False
