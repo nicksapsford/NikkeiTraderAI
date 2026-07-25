@@ -29,8 +29,8 @@ BOJ_MEETING_DAYS = {
     "2026-10-29", "2026-10-30",   # October MPM
     "2026-12-17", "2026-12-18",   # December MPM
 }
-BOJ_DATES_2026 = []   # (timed-event mechanism unused for BoJ -- see full-day block above)
-BOJ_DATES_2027 = []
+# (BoJ timed-event lists + the 30-min timed window they fed were REMOVED 25 Jul 2026 --
+#  dormant dead code. The full-day BOJ_MEETING_DAYS block above is the active protection.)
 
 # Fed decisions drive the overnight Wall Street move -> Tokyo open gap (soft context).
 FED_DATES_2026 = [
@@ -101,10 +101,6 @@ def _build_boe_events(year_dates: list) -> list:
         except Exception:
             pass
     return events
-
-
-def _get_all_hard_events() -> list:
-    return _build_boe_events(BOJ_DATES_2026) + _build_boe_events(BOJ_DATES_2027)
 
 
 def _get_fed_events() -> list:
@@ -182,38 +178,19 @@ def check_calendar(now_utc: Optional[datetime] = None) -> dict:
             "next_boe":         "",
         }
 
-    hard_events = _get_all_hard_events()
     soft_events = _get_fed_events() + _get_nfp_events()
 
-    # Check hard block window
+    # BoJ 30-minute timed-entry window REMOVED 25 Jul 2026 (filter-audit tidy-up):
+    # it was dormant dead code -- the BoJ timed-date list was empty so this never fired.
+    # The FULL-DAY BoJ block above (BOJ_MEETING_DAYS early-return) is the active BoJ
+    # protection and is unchanged.
     hard_block   = False
     block_reason = ""
-    for ev in hard_events:
-        ev_time    = ev["datetime"]
-        delta_secs = (ev_time - now_utc).total_seconds()
-        window     = HARD_BLOCK_MINUTES * 60
-        if -window <= delta_secs <= window:
-            hard_block   = True
-            if delta_secs >= 0:
-                mins = int(delta_secs / 60)
-                block_reason = (
-                    f"{ev['name']} in {mins} minutes "
-                    f"({ev['date_str']}) -- "
-                    f"hard block {HARD_BLOCK_MINUTES} min either side"
-                )
-            else:
-                mins = int(-delta_secs / 60)
-                block_reason = (
-                    f"{ev['name']} announced {mins} minutes ago -- "
-                    f"volatility window active, {HARD_BLOCK_MINUTES - mins} min remaining"
-                )
-            log.warning("GUINEVERE HARD BLOCK: %s", block_reason)
-            break
 
     # Upcoming events in next 24 hours
     upcoming = []
     window_24h = timedelta(hours=24)
-    for ev in hard_events + soft_events:
+    for ev in soft_events:
         delta = ev["datetime"] - now_utc
         if timedelta(0) <= delta <= window_24h:
             mins_away = int(delta.total_seconds() / 60)
@@ -226,20 +203,9 @@ def check_calendar(now_utc: Optional[datetime] = None) -> dict:
             })
     upcoming.sort(key=lambda x: x["mins_away"])
 
-    # Next BoE decision
-    future_boe = sorted(
-        [ev for ev in hard_events if ev["datetime"] > now_utc],
-        key=lambda x: x["datetime"],
-    )
-    next_boe = future_boe[0] if future_boe else None
+    # Next BoJ decision: the timed BoJ list is gone; the full-day BOJ_MEETING_DAYS block
+    # is the active protection, so there is no "next timed BoJ" string to compute.
     next_boe_str = ""
-    if next_boe:
-        delta   = next_boe["datetime"] - now_utc
-        days    = delta.days
-        next_boe_str = (
-            f"Next BoJ: {next_boe['date_str']} "
-            f"({days} days away)"
-        )
 
     # Calendar summary for Arthur
     if hard_block:
