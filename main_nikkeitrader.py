@@ -199,6 +199,40 @@ def _indicator_snapshot(bar) -> dict:
     }
 
 
+def _ssl_label(ind: dict) -> str:
+    """BULL / BEAR / -- from an indicator snapshot's ssl_bull flag."""
+    if not ind or "ssl_bull" not in ind:
+        return "--"
+    return "BULL" if ind["ssl_bull"] else "BEAR"
+
+
+def _fmt_ind(v) -> str:
+    """2dp string for a numeric indicator, or '' if unavailable."""
+    return "" if v is None else f"{float(v):.2f}"
+
+
+def _build_exit_meta(ind_1d: dict, ind_1h: dict, ind_5m: dict, decision: dict) -> dict:
+    """Indicator snapshot + Arthur's exit-decision confidence for an ARTHUR_EXIT
+    (Gaius Commission 012). Scalars are taken from the 1h snapshot (the confirmation
+    timeframe). Best-effort -- returns None on any error so a logging failure never
+    blocks a trade close."""
+    try:
+        ind_1h = ind_1h or {}
+        conf = decision.get("confidence") if decision else None
+        return {
+            "exit_daily_ssl":  _ssl_label(ind_1d),
+            "exit_1h_ssl":     _ssl_label(ind_1h),
+            "exit_5m_ssl":     _ssl_label(ind_5m),
+            "exit_tmo":        _fmt_ind(ind_1h.get("tmo_main")),
+            "exit_money_flow": _fmt_ind(ind_1h.get("money_flow")),
+            "exit_rsi":        _fmt_ind(ind_1h.get("rsi")),
+            "exit_chande_mo":  _fmt_ind(ind_1h.get("chande_mo")),
+            "exit_confidence": "" if conf is None else str(conf),
+        }
+    except Exception:
+        return None
+
+
 def _push_dashboard(
     stanley:    PaperTraderNikkei,
     account:    AccountState,
@@ -328,6 +362,10 @@ def run_candle_tick(
 
     log.info("--- CANDLE TICK | %s | phase=%s | Nikkei=%.1f ---",
              now_utc.strftime("%H:%M:%S UTC"), phase, nikkei_price)
+
+    # Gaius Commission 012: fill any ARTHUR_EXIT row's post-exit prices once 30/60 min
+    # have elapsed (runs every tick, survives restarts, never raises).
+    stanley.fill_post_exit_prices(nikkei_price, now_utc)
 
     # Calendar check
     hard_blocked, block_reason, event_name, mins_remain = is_hard_blocked(now_utc)
@@ -490,7 +528,10 @@ def run_candle_tick(
         _open_trade(stanley, account, ig, "SHORT", nikkei_price, phase)
 
     elif action == "EXIT" and stanley.in_trade:
-        _close_trade(stanley, account, ig, nikkei_price, "ARTHUR_EXIT")
+        # Gaius Commission 012: capture the indicator snapshot + Arthur's exit confidence
+        # so we can later judge whether the early exit was skill or premature.
+        _emeta = _build_exit_meta(ind_1d, ind_1h, ind_5m, decision)
+        _close_trade(stanley, account, ig, nikkei_price, "ARTHUR_EXIT", exit_meta=_emeta)
 
     elif action == "HOLD" and stanley.in_trade:
         log.info("Arthur says HOLD -- maintaining position")
@@ -609,8 +650,9 @@ def _close_trade(
     ig:       CapitalComConnector,
     price:    float,
     reason:   str,
+    exit_meta: dict = None,
 ) -> None:
-    trade = stanley.close_trade(price, reason)
+    trade = stanley.close_trade(price, reason, exit_meta=exit_meta)
     if trade is None:
         return
     _handle_closed_trade(account, trade)
