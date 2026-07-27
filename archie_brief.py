@@ -242,6 +242,11 @@ def build_system_brief(state, system_name, asset_label, logs_dir=None, now_utc=N
     _sv = abs(float(soq.get("net_saved", 0) or 0))
     _ms = abs(float(soq.get("net_missed", 0) or 0))
     a("Net Saved: GBP +%s | Net Missed: GBP -%s" % (_num(_sv, 2), _num(_ms, 2)))
+    # FAIR figures (Phantom/Benchmark Link, 27 Jul 2026): only rows where the matched
+    # benchmark was FLAT at decision time. These are the decision-grade numbers.
+    _svf = abs(float(soq.get("net_saved_fair", 0) or 0))
+    _msf = abs(float(soq.get("net_missed_fair", 0) or 0))
+    a("Net Saved (fair, bench FLAT): GBP +%s | Net Missed (fair): GBP -%s" % (_num(_svf, 2), _num(_msf, 2)))
     _phantom_recent(soq, a, show_market=("crypto" in (system_name or "").lower()))
     a("")
     a("GUINEVERE")

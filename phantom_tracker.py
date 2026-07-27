@@ -77,7 +77,19 @@ NEW_HORIZON_COLUMNS = [
     'price_15min', 'pnl_15min',    # float -- price / P&L 15 mins later
 ]
 
-FIELDNAMES = _BASE_FIELDS + INDICATOR_COLUMNS + NEW_HORIZON_COLUMNS
+# Benchmark-availability columns (Phantom/Benchmark Link fix, 27 Jul 2026). Captured
+# AT DECISION TIME from the matched benchmark's live position, so we can tell a
+# genuine Arthur "save" (benchmark was FLAT and would have entered) from one the
+# benchmark also avoided only because its one-trade guard had it in another position.
+# Appended to the RIGHT so existing column positions never move; old rows migrate to
+# '' and are treated as fair_comparison UNKNOWN. See the Stage-1 diagnostic report.
+BENCHMARK_COLUMNS = [
+    'benchmark_state',      # FLAT / LONG / SHORT / IN_TRADE / UNKNOWN at decision time
+    'benchmark_available',  # 'TRUE' (benchmark FLAT) / 'FALSE' (in trade) / 'UNKNOWN'
+    'fair_comparison',      # 'TRUE' / 'FALSE' / 'UNKNOWN' -- is this a fair Arthur-vs-benchmark row
+]
+
+FIELDNAMES = _BASE_FIELDS + INDICATOR_COLUMNS + NEW_HORIZON_COLUMNS + BENCHMARK_COLUMNS
 
 # Verdict thresholds (index points) -- classified on the 1hr post-decision window.
 # System 5 Review desk-wide (18 Jul 2026): 10 -> 7. The old 10 sat above Nikkei's median
@@ -492,9 +504,18 @@ def _update_row(row_index, market, direction_blocked,
             logger.error("phantom_tracker: Error updating %s: %s", price_col, e)
 
 
+def _fair_from_available(benchmark_available):
+    """Map benchmark_available (bool/None) to the fair_comparison flag string."""
+    if benchmark_available is True:
+        return 'TRUE'
+    if benchmark_available is False:
+        return 'FALSE'
+    return 'UNKNOWN'
+
+
 def record_decision(market, direction_blocked, price_at_decision,
                     confidence, reason_for_stay_out, get_price_fn=None,
-                    indicators=None):
+                    indicators=None, benchmark_state=None, benchmark_available=None):
     """
     Call this after every STAY OUT decision in the main loop.
 
@@ -527,6 +548,11 @@ def record_decision(market, direction_blocked, price_at_decision,
         'confidence':          confidence,
         'reason_for_stay_out': reason_for_stay_out,
         'verdict':             'PENDING',
+        'benchmark_state':     (benchmark_state if benchmark_state else 'UNKNOWN'),
+        'benchmark_available': ('TRUE' if benchmark_available is True
+                                else 'FALSE' if benchmark_available is False
+                                else 'UNKNOWN'),
+        'fair_comparison':     _fair_from_available(benchmark_available),
     })
     if indicators:
         for col in INDICATOR_COLUMNS:

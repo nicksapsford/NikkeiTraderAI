@@ -92,6 +92,7 @@ from performance_nikkei   import (
 )
 from pre_checks_nikkei    import run_all_pre_checks, run_individual_pre_checks
 import phantom_tracker
+import benchmark_link
 
 SESS_TZ = timezone.utc   # Tokyo cash session == UTC (Japan has no DST)
 
@@ -556,6 +557,10 @@ def run_candle_tick(
             except Exception as _se:
                 log.warning("phantom indicator snapshot failed: %s", _se)
                 _snap = None
+            try:
+                _bstate, _bavail = benchmark_link.read_availability()
+            except Exception:
+                _bstate, _bavail = ("UNKNOWN", None)
             phantom_tracker.record_decision(
                 market="Nikkei",
                 direction_blocked=_dir,
@@ -564,6 +569,8 @@ def run_candle_tick(
                 reason_for_stay_out="ARTHUR_STAY_OUT",
                 get_price_fn=lambda m: _get_price(ig, feed),
                 indicators=_snap,
+                benchmark_state=_bstate,
+                benchmark_available=_bavail,
             )
         except Exception as _exc:
             log.warning("phantom_tracker record failed: %s", _exc)

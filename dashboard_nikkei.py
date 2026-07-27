@@ -66,8 +66,17 @@ def get_stay_out_quality():
         quality_score = round((correct/total)*100) if total else 0
         net_saved  = sum(float(r.get('pnl_1hr', 0) or 0) for r in last_20 if r.get('verdict') == 'CORRECT')
         net_missed = sum(float(r.get('pnl_1hr', 0) or 0) for r in last_20 if r.get('verdict') == 'WRONG')
+        # FAIR figures (Phantom/Benchmark Link, 27 Jul 2026): only rows where the matched
+        # benchmark was FLAT at decision time (fair_comparison == 'TRUE').
+        _fair = lambda r: r.get('fair_comparison') == 'TRUE'
+        net_saved_fair  = sum(float(r.get('pnl_1hr', 0) or 0) for r in last_20 if r.get('verdict') == 'CORRECT' and _fair(r))
+        net_missed_fair = sum(float(r.get('pnl_1hr', 0) or 0) for r in last_20 if r.get('verdict') == 'WRONG' and _fair(r))
+        fair_correct = sum(1 for r in last_20 if r.get('verdict') == 'CORRECT' and _fair(r))
+        fair_wrong   = sum(1 for r in last_20 if r.get('verdict') == 'WRONG' and _fair(r))
         return {'status': 'ok', 'decisions': last_20, 'quality_score': quality_score,
-                'net_saved': net_saved, 'net_missed': net_missed, 'correct': correct, 'wrong': wrong, 'neutral': neutral}
+                'net_saved': net_saved, 'net_missed': net_missed, 'correct': correct, 'wrong': wrong, 'neutral': neutral,
+                'net_saved_fair': net_saved_fair, 'net_missed_fair': net_missed_fair,
+                'fair_correct': fair_correct, 'fair_wrong': fair_wrong}
     except Exception as e:
         return {'status': 'Error: ' + str(e), 'decisions': []}
 
@@ -627,6 +636,7 @@ function renderPhantomBody(sq){
     '<div>Last 50 decisions &nbsp;|&nbsp; Quality: <span class="ps-q">' + q + '</span></div>' +
     '<div>✅ Correct: ' + (sq.correct||0) + ' &nbsp;&nbsp; ❌ Wrong: ' + (sq.wrong||0) + ' &nbsp;&nbsp; ➖ Neutral: ' + (sq.neutral||0) + '</div>' +
     '<div>Net Saved: <span class="bull">+£' + Math.abs(saved).toFixed(2) + '</span> &nbsp;&nbsp; Net Missed: <span class="bear">-£' + Math.abs(missed).toFixed(2) + '</span></div>' +
+    '<div style="opacity:0.85;">Fair (benchmark FLAT only): <span class="bull">+£' + Math.abs((sq.net_saved_fair==null)?0:sq.net_saved_fair).toFixed(2) + '</span> &nbsp;&nbsp; <span class="bear">-£' + Math.abs((sq.net_missed_fair==null)?0:sq.net_missed_fair).toFixed(2) + '</span></div>' +
     '</div>';
   var decs = (sq.decisions || []).slice(); decs.reverse();
   html += '<div class="phantom-scroll"><table class="phantom-table"><thead><tr>' +
@@ -1521,6 +1531,9 @@ def build_phantom_brief():
     quality = round(correct / total * 100) if total else 0
     net_saved = sum(fnum(r.get('pnl_1hr')) or 0 for r in recent if r.get('verdict') == 'CORRECT')
     net_missed = sum(fnum(r.get('pnl_1hr')) or 0 for r in recent if r.get('verdict') == 'WRONG')
+    _fair = lambda r: r.get('fair_comparison') == 'TRUE'
+    net_saved_fair = sum(fnum(r.get('pnl_1hr')) or 0 for r in recent if r.get('verdict') == 'CORRECT' and _fair(r))
+    net_missed_fair = sum(fnum(r.get('pnl_1hr')) or 0 for r in recent if r.get('verdict') == 'WRONG' and _fair(r))
 
     def dist(col):
         c = w = n = 0
@@ -1564,6 +1577,8 @@ def build_phantom_brief():
     L.append('  Quality: %d%% | Last %d decisions' % (quality, len(recent)))
     L.append('  Correct: %d | Wrong: %d | Neutral: %d' % (correct, wrong, neutral))
     L.append('  Net Saved: GBP +%.2f | Net Missed: GBP -%.2f' % (abs(net_saved), abs(net_missed)))
+    L.append('  Net Saved (fair, benchmark FLAT): GBP +%.2f | Net Missed (fair): GBP -%.2f'
+             % (abs(net_saved_fair), abs(net_missed_fair)))
     L.append('')
     L.append('TIME HORIZON ANALYSIS (from available data)')
     L.append('  30min verdict distribution:')
