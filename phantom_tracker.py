@@ -11,6 +11,7 @@ ETH loops sharing one file) cannot corrupt phantom_trades.csv.
 """
 
 import csv
+import json
 import os
 import threading
 import time
@@ -89,7 +90,20 @@ BENCHMARK_COLUMNS = [
     'fair_comparison',      # 'TRUE' / 'FALSE' / 'UNKNOWN' -- is this a fair Arthur-vs-benchmark row
 ]
 
-FIELDNAMES = _BASE_FIELDS + INDICATOR_COLUMNS + NEW_HORIZON_COLUMNS + BENCHMARK_COLUMNS
+# Phantom de-duplication (28 Jul 2026, desk-wide). A sustained trend Arthur stays out of
+# is polled repeatedly, so ONE missed move would otherwise log as many identical
+# consecutive rows -- inflating Net Saved/Missed and crushing Morgan (CryptoHybrid 63->2).
+# 'deduplicated': 'FALSE' = genuinely NEW signal (direction changed, or >= DEDUP_GAP_MINUTES
+# since the last same-direction phantom for this market) -> counts for Morgan + metrics;
+# 'TRUE' = duplicate of an ongoing trend -> row KEPT but NO Morgan penalty/reward, excluded
+# from unique-signal metrics; '' = UNKNOWN (pre-fix rows).
+DEDUP_COLUMNS = ['deduplicated']
+
+FIELDNAMES = _BASE_FIELDS + INDICATOR_COLUMNS + NEW_HORIZON_COLUMNS + BENCHMARK_COLUMNS + DEDUP_COLUMNS
+
+DEDUP_GAP_MINUTES = 60
+DEDUP_STATE_PATH  = os.path.join(os.path.dirname(__file__), 'logs', 'phantom_dedup_state.json')
+_dedup_lock = threading.Lock()
 
 # Verdict thresholds (index points) -- classified on the 1hr post-decision window.
 # System 5 Review desk-wide (18 Jul 2026): 10 -> 7. The old 10 sat above Nikkei's median
@@ -513,6 +527,51 @@ def _fair_from_available(benchmark_available):
     return 'UNKNOWN'
 
 
+def _load_dedup_state():
+    try:
+        with open(DEDUP_STATE_PATH, 'r', encoding='utf-8') as f:
+            return json.load(f)
+    except Exception:
+        return {}
+
+
+def _save_dedup_state(state):
+    try:
+        os.makedirs(os.path.dirname(DEDUP_STATE_PATH), exist_ok=True)
+        with open(DEDUP_STATE_PATH, 'w', encoding='utf-8') as f:
+            json.dump(state, f)
+    except Exception as e:
+        logger.warning("phantom_tracker: dedup state save failed: %s", e)
+
+
+def _dedup_flag(market, direction_blocked):
+    """Return 'TRUE' if this phantom is a DUPLICATE of a recent same-direction phantom for
+    the same market (within DEDUP_GAP_MINUTES), else 'FALSE' for a genuinely new signal --
+    and in the FALSE case advance the per-market anchor. Per-instrument. Never raises; on
+    any error returns 'FALSE' (fail-open so a genuine signal is never suppressed)."""
+    key = str(market).upper()
+    now = datetime.now(timezone.utc)
+    try:
+        with _dedup_lock:
+            state = _load_dedup_state()
+            entry = state.get(key)
+            if entry and entry.get('direction') == direction_blocked:
+                try:
+                    last_t = datetime.fromisoformat(entry['time'])
+                    if last_t.tzinfo is None:
+                        last_t = last_t.replace(tzinfo=timezone.utc)
+                    if (now - last_t).total_seconds() < DEDUP_GAP_MINUTES * 60:
+                        return 'TRUE'
+                except Exception:
+                    pass
+            state[key] = {'direction': direction_blocked, 'time': now.isoformat()}
+            _save_dedup_state(state)
+            return 'FALSE'
+    except Exception as e:
+        logger.warning("phantom_tracker: dedup check failed (%s) -- treating as new signal", e)
+        return 'FALSE'
+
+
 def record_decision(market, direction_blocked, price_at_decision,
                     confidence, reason_for_stay_out, get_price_fn=None,
                     indicators=None, benchmark_state=None, benchmark_available=None):
@@ -553,6 +612,7 @@ def record_decision(market, direction_blocked, price_at_decision,
                                 else 'FALSE' if benchmark_available is False
                                 else 'UNKNOWN'),
         'fair_comparison':     _fair_from_available(benchmark_available),
+        'deduplicated':        _dedup_flag(market, direction_blocked),
     })
     if indicators:
         for col in INDICATOR_COLUMNS:
@@ -835,6 +895,8 @@ def get_unprocessed_verdicts():
     for r in rows:
         if r.get('morgan_processed') == 'True':
             continue
+        if r.get('deduplicated') == 'TRUE':
+            continue   # phantom de-dup (28 Jul 2026): duplicates never move Morgan
         if r.get('verdict') in ('CORRECT', 'WRONG'):
             out.append(r)
     return out
