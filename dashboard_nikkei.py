@@ -49,8 +49,20 @@ def get_git_hash():
 VERSION_STRING = "v" + str(APP_VERSION) + " (" + get_git_hash() + ")"
 
 
+def _is_duplicate_phantom(r):
+    """Job 6: a phantom row is a DUPLICATE only when deduplicated == 'TRUE'
+    (a same-direction trend already ongoing within 60 min). 'FALSE' and blank/
+    UNKNOWN (pre-fix historical) rows count as UNIQUE — this matches how Morgan
+    scores (Morgan skips only TRUE rows)."""
+    return (r.get('deduplicated') or '').strip().upper() == 'TRUE'
+
+
 def get_stay_out_quality():
     # ALBION RULE: phantom_trades.csv timestamps are UTC — never BST/local.
+    # Job 6: quality metrics default to UNIQUE signals (deduplicated != 'TRUE');
+    # the ALL-DECISIONS set is also returned so the phantom-page toggle can
+    # switch client-side with no refetch. "Last 50" is applied AFTER filtering
+    # to unique. Backward-compat: top-level keys mirror the UNIQUE (default) view.
     csv_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'logs', 'phantom_trades.csv')
     if not os.path.exists(csv_path):
         return {'status': 'No data yet', 'decisions': [], 'quality_score': None,
@@ -58,25 +70,41 @@ def get_stay_out_quality():
     try:
         with open(csv_path, 'r', encoding='utf-8') as f:
             rows = list(csv.DictReader(f))
-        last_20 = rows[-50:]
-        correct = sum(1 for r in last_20 if r.get('verdict') == 'CORRECT')
-        wrong   = sum(1 for r in last_20 if r.get('verdict') == 'WRONG')
-        neutral = sum(1 for r in last_20 if r.get('verdict') == 'NEUTRAL')
-        total   = (correct + wrong + neutral)
-        quality_score = round((correct/total)*100) if total else 0
-        net_saved  = sum(float(r.get('pnl_1hr', 0) or 0) for r in last_20 if r.get('verdict') == 'CORRECT')
-        net_missed = sum(float(r.get('pnl_1hr', 0) or 0) for r in last_20 if r.get('verdict') == 'WRONG')
         # FAIR figures (Phantom/Benchmark Link, 27 Jul 2026): only rows where the matched
         # benchmark was FLAT at decision time (fair_comparison == 'TRUE').
         _fair = lambda r: r.get('fair_comparison') == 'TRUE'
-        net_saved_fair  = sum(float(r.get('pnl_1hr', 0) or 0) for r in last_20 if r.get('verdict') == 'CORRECT' and _fair(r))
-        net_missed_fair = sum(float(r.get('pnl_1hr', 0) or 0) for r in last_20 if r.get('verdict') == 'WRONG' and _fair(r))
-        fair_correct = sum(1 for r in last_20 if r.get('verdict') == 'CORRECT' and _fair(r))
-        fair_wrong   = sum(1 for r in last_20 if r.get('verdict') == 'WRONG' and _fair(r))
-        return {'status': 'ok', 'decisions': last_20, 'quality_score': quality_score,
-                'net_saved': net_saved, 'net_missed': net_missed, 'correct': correct, 'wrong': wrong, 'neutral': neutral,
-                'net_saved_fair': net_saved_fair, 'net_missed_fair': net_missed_fair,
-                'fair_correct': fair_correct, 'fair_wrong': fair_wrong}
+
+        def _metrics(subset):
+            last = subset[-50:]
+            correct = sum(1 for r in last if r.get('verdict') == 'CORRECT')
+            wrong   = sum(1 for r in last if r.get('verdict') == 'WRONG')
+            neutral = sum(1 for r in last if r.get('verdict') == 'NEUTRAL')
+            total   = (correct + wrong + neutral)
+            quality_score = round((correct/total)*100) if total else 0
+            net_saved  = sum(float(r.get('pnl_1hr', 0) or 0) for r in last if r.get('verdict') == 'CORRECT')
+            net_missed = sum(float(r.get('pnl_1hr', 0) or 0) for r in last if r.get('verdict') == 'WRONG')
+            net_saved_fair  = sum(float(r.get('pnl_1hr', 0) or 0) for r in last if r.get('verdict') == 'CORRECT' and _fair(r))
+            net_missed_fair = sum(float(r.get('pnl_1hr', 0) or 0) for r in last if r.get('verdict') == 'WRONG' and _fair(r))
+            fair_correct = sum(1 for r in last if r.get('verdict') == 'CORRECT' and _fair(r))
+            fair_wrong   = sum(1 for r in last if r.get('verdict') == 'WRONG' and _fair(r))
+            return {'decisions': last, 'quality_score': quality_score,
+                    'net_saved': net_saved, 'net_missed': net_missed,
+                    'correct': correct, 'wrong': wrong, 'neutral': neutral,
+                    'net_saved_fair': net_saved_fair, 'net_missed_fair': net_missed_fair,
+                    'fair_correct': fair_correct, 'fair_wrong': fair_wrong}
+
+        unique_rows = [r for r in rows if not _is_duplicate_phantom(r)]
+        unique = _metrics(unique_rows)
+        alld   = _metrics(rows)
+        win_all = rows[-50:]
+        dup_in_win  = sum(1 for r in win_all if _is_duplicate_phantom(r))
+        uniq_in_win = len(win_all) - dup_in_win
+        out = {'status': 'ok'}
+        out.update(unique)  # backward-compat: top-level keys = UNIQUE view
+        out['unique'] = unique
+        out['all'] = alld
+        out['counts'] = {'unique': uniq_in_win, 'duplicates': dup_in_win, 'total': len(win_all)}
+        return out
     except Exception as e:
         return {'status': 'Error: ' + str(e), 'decisions': []}
 
@@ -363,6 +391,12 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
 .phantom-head{display:flex;align-items:center;justify-content:space-between;gap:12px;}
 .phantom-summary{background:rgba(255,255,255,0.03);border:1px solid var(--border,#333);border-radius:8px;padding:12px 16px;font-size:13px;line-height:1.9;}
 .phantom-summary .ps-q{font-weight:700;}
+/* Job 6: unique-signals / all-decisions toggle + note */
+.phantom-toggle{display:flex;gap:8px;margin-bottom:2px;}
+.ph-tgl{background:rgba(255,255,255,0.03);border:1px solid var(--border,#333);color:var(--muted);padding:5px 12px;border-radius:6px;font-size:11px;font-weight:600;cursor:pointer;letter-spacing:0.5px;text-transform:uppercase;transition:background 0.15s;}
+.ph-tgl:hover{background:rgba(255,255,255,0.08);}
+.ph-tgl.active{background:rgba(255,255,255,0.10);border-color:var(--gold-lite,var(--gold,var(--oil,#d4af37)));color:var(--gold-lite,var(--gold,var(--oil,#d4af37)));}
+.phantom-note{font-size:11px;color:var(--muted);margin-top:2px;letter-spacing:0.3px;}
 .phantom-scroll{max-height:600px;overflow:auto;}
 .phantom-table td.ph-na{color:var(--muted,#888);}
 .phantom-table{width:100%;border-collapse:collapse;font-size:12px;}
@@ -625,20 +659,40 @@ function phMoveCell(v){
   var cls = (n>=0)?'bull':'bear';
   return '<td class="'+cls+'">'+(n>=0?'+£':'-£')+Math.abs(n).toFixed(2)+'</td>';
 }
+/* Job 6: phantom-page view state. Default = UNIQUE signals (deduplicated != TRUE).
+   Toggle re-renders client-side from data already in sq -- no backend refetch. */
+var _phantomUnique = true;
+var _lastPhantomSq = null;
+function phantomView(u){
+  _phantomUnique = !!u;
+  if(_lastPhantomSq){ var _pb = document.getElementById('phantomBody'); if(_pb){ _pb.innerHTML = renderPhantomBody(_lastPhantomSq); } }
+}
 function renderPhantomBody(sq){
   sq = sq || {};
+  _lastPhantomSq = sq;
   if(!sq.status || sq.status === 'No data yet'){ return '<div style="color:var(--muted);font-size:12px;">Awaiting first phantom decisions</div>'; }
   if(sq.status !== 'ok'){ return '<div style="color:var(--muted);font-size:12px;">' + sq.status + '</div>'; }
-  var q = (sq.quality_score == null) ? '--' : (sq.quality_score + '%');
-  var saved  = (sq.net_saved  == null) ? 0 : sq.net_saved;
-  var missed = (sq.net_missed == null) ? 0 : sq.net_missed;
-  var html = '<div class="phantom-summary">' +
-    '<div>Last 50 decisions &nbsp;|&nbsp; Quality: <span class="ps-q">' + q + '</span></div>' +
-    '<div>✅ Correct: ' + (sq.correct||0) + ' &nbsp;&nbsp; ❌ Wrong: ' + (sq.wrong||0) + ' &nbsp;&nbsp; ➖ Neutral: ' + (sq.neutral||0) + '</div>' +
-    '<div>Net Saved: <span class="bull">+£' + Math.abs(saved).toFixed(2) + '</span> &nbsp;&nbsp; Net Missed: <span class="bear">-£' + Math.abs(missed).toFixed(2) + '</span></div>' +
-    '<div style="opacity:0.85;">Fair (benchmark FLAT only): <span class="bull">+£' + Math.abs((sq.net_saved_fair==null)?0:sq.net_saved_fair).toFixed(2) + '</span> &nbsp;&nbsp; <span class="bear">-£' + Math.abs((sq.net_missed_fair==null)?0:sq.net_missed_fair).toFixed(2) + '</span></div>' +
+  var m = _phantomUnique ? (sq.unique || sq) : (sq.all || sq);
+  var counts = sq.counts || {};
+  var X = (counts.unique == null) ? 0 : counts.unique;
+  var Y = (counts.total == null) ? 0 : counts.total;
+  var Z = (counts.duplicates == null) ? 0 : counts.duplicates;
+  var q = (m.quality_score == null) ? '--' : (m.quality_score + '%');
+  var saved  = (m.net_saved  == null) ? 0 : m.net_saved;
+  var missed = (m.net_missed == null) ? 0 : m.net_missed;
+  var decs = (m.decisions || []).slice();
+  var toggle = '<div class="phantom-toggle">' +
+    '<button class="ph-tgl' + (_phantomUnique?' active':'') + '" onclick="phantomView(1)">UNIQUE SIGNALS</button>' +
+    '<button class="ph-tgl' + (_phantomUnique?'':' active') + '" onclick="phantomView(0)">ALL DECISIONS</button>' +
     '</div>';
-  var decs = (sq.decisions || []).slice(); decs.reverse();
+  var html = toggle + '<div class="phantom-summary">' +
+    '<div>Last ' + decs.length + ' decisions &nbsp;|&nbsp; Quality: <span class="ps-q">' + q + '</span></div>' +
+    '<div>✅ Correct: ' + (m.correct||0) + ' &nbsp;&nbsp; ❌ Wrong: ' + (m.wrong||0) + ' &nbsp;&nbsp; ➖ Neutral: ' + (m.neutral||0) + '</div>' +
+    '<div>Net Saved: <span class="bull">+£' + Math.abs(saved).toFixed(2) + '</span> &nbsp;&nbsp; Net Missed: <span class="bear">-£' + Math.abs(missed).toFixed(2) + '</span></div>' +
+    '<div style="opacity:0.85;">Fair (benchmark FLAT only): <span class="bull">+£' + Math.abs((m.net_saved_fair==null)?0:m.net_saved_fair).toFixed(2) + '</span> &nbsp;&nbsp; <span class="bear">-£' + Math.abs((m.net_missed_fair==null)?0:m.net_missed_fair).toFixed(2) + '</span></div>' +
+    '</div>' +
+    '<div class="phantom-note">Showing ' + X + ' unique signals from ' + Y + ' total decisions (' + Z + ' duplicates filtered)</div>';
+  decs.reverse();
   html += '<div class="phantom-scroll"><table class="phantom-table"><thead><tr>' +
     '<th>Date/Time (UTC)</th><th>Direction</th><th>Entry Price</th><th>Confidence</th><th>5min</th><th>10min</th><th>15min</th><th>30min</th><th>1hr</th><th>2hr</th><th>Verdict</th>' +
     '</tr></thead><tbody>';
@@ -1499,7 +1553,13 @@ def build_phantom_brief():
                 rows = list(csv.DictReader(f))
         except Exception:
             rows = []
-    recent = rows[-50:]
+    # Job 6: report quality from UNIQUE signals only (deduplicated != 'TRUE'),
+    # matching the phantom page default + how Morgan scores.
+    def _is_dup(r):
+        return (r.get('deduplicated') or '').strip().upper() == 'TRUE'
+    unique_rows = [r for r in rows if not _is_dup(r)]
+    recent = unique_rows[-50:]
+    _dup_filtered = sum(1 for r in rows[-50:] if _is_dup(r))
 
     def fnum(v):
         try:
@@ -1573,8 +1633,9 @@ def build_phantom_brief():
     L.append('Generated: %s UTC' % ts)
     L.append(bar)
     L.append('')
-    L.append('SUMMARY')
-    L.append('  Quality: %d%% | Last %d decisions' % (quality, len(recent)))
+    L.append('SUMMARY (UNIQUE signals only)')
+    L.append('  Quality: %d%% | Last %d unique decisions' % (quality, len(recent)))
+    L.append('  (%d duplicate signal(s) filtered from the last-50 window)' % _dup_filtered)
     L.append('  Correct: %d | Wrong: %d | Neutral: %d' % (correct, wrong, neutral))
     L.append('  Net Saved: GBP +%.2f | Net Missed: GBP -%.2f' % (abs(net_saved), abs(net_missed)))
     L.append('  Net Saved (fair, benchmark FLAT): GBP +%.2f | Net Missed (fair): GBP -%.2f'
