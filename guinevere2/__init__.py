@@ -15,8 +15,9 @@ Requires ALPHA_VANTAGE_API_KEY in .env. ALL TIMES UTC.
 """
 
 from .guinevere2_main import (
-    get_signal, get_advisory, format_dashboard, format_archie, log_decision,
+    get_signal, get_advisory, format_dashboard, format_archie, log_decision, is_high_alert,
 )
 
-__all__ = ["get_signal", "get_advisory", "format_dashboard", "format_archie", "log_decision"]
-__version__ = "2.0.0"
+__all__ = ["get_signal", "get_advisory", "format_dashboard", "format_archie",
+           "log_decision", "is_high_alert"]
+__version__ = "2.1.0"   # BOOSTS AND REDIRECTS, NEVER BLOCKS (31 Jul 2026)

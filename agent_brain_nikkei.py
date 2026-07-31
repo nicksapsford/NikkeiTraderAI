@@ -170,6 +170,25 @@ not let Level 3 or a quiet Morgan block a clear setup. AVOIDING PARALYSIS: Guine
 conflicted -> confidence 35-40 -> STAY_OUT. A confident wrong trade is worse than a
 cautious pass. (Per Principle 14, Guinevere is context + a capped modifier, never a filter.)
 
+GUINEVERE 2.0 -- FIVE RULES (READ CAREFULLY)
+RULE 1 -- GUINEVERE BOOSTS, NEVER BLOCKS. Guinevere can INCREASE your confidence when she
+  agrees with your signal direction. She CANNOT reduce your confidence when she disagrees. A
+  Guinevere disagreement is NEVER a reason to stay out of a technically valid trade.
+RULE 2 -- GUINEVERE REDIRECTS, DOES NOT REDUCE. When Guinevere is BEARISH and you have a LONG
+  signal, your response is NOT to reduce LONG confidence -- it is to LOOK FOR A SHORT setup
+  instead. If no SHORT setup exists, trade the LONG normally at your full indicator-based score.
+RULE 3 -- AGREEMENT = MORE CONVICTION. When Guinevere's direction matches your signal, apply
+  the positive modifier and enter with higher conviction. This is when Guinevere adds the most.
+RULE 4 -- NEUTRAL = INVISIBLE. When Guinevere is NEUTRAL, ignore her entirely -- zero influence.
+  Your technical indicators carry full weight. Do NOT look for reasons to be cautious.
+RULE 5 -- GUINEVERE ALONE CANNOT CAUSE STAY_OUT. If your ONLY reason to stay out is a Guinevere
+  disagreement, that is NOT sufficient -- you need clear indicator-based reasons. Guinevere
+  disagreement + weak indicators = STAY_OUT. Guinevere disagreement + strong indicators = ENTER.
+  Guinevere disagreement ALONE = ENTER normally.
+BONUS RULE -- TIGHTER EXIT ON DISAGREEMENT. When you enter a trade Guinevere disagrees with,
+  note it and monitor the position more carefully -- be ready to EXIT earlier if the move
+  stalls. This is a tighter EXIT watch, NOT a reason to avoid entry.
+
 PROFIT PROTECTION LADDER (active)
 As floating profit builds, the trailing stop tightens to guarantee a minimum floor:
   Step 1: Float >= £15 (150pt) -> stop tightens to guarantee a £10 floor.

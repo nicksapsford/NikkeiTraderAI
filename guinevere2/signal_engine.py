@@ -182,16 +182,33 @@ def build_signal(instrument, articles, calendar_events, now_utc=None, month_tren
     ranked = sorted(drivers, key=lambda d: (d["rank"], -d["strength"]))
     primary = ranked[0]
     secondary = next((d for d in ranked[1:] if d["event_type"] != primary["event_type"]), None)
+    gdir = "BULLISH" if net_dir > 0 else "BEARISH"
+    favoured = "LONG" if net_dir > 0 else "SHORT"
 
+    # GUINEVERE BOOSTS AND REDIRECTS -- SHE NEVER BLOCKS (31 Jul 2026, Archie/Nick).
+    # `modifier` is a POSITIVE boost (0..25) applied ONLY to a trade in the FAVOURED
+    # direction. A trade in the OPPOSITE direction gets ZERO -- never a negative penalty.
+    # Instead Arthur is REDIRECTED: look for a favoured-direction setup; if none, trade the
+    # opposing setup normally at full indicator confidence.
     return {
         "instrument": instrument,
-        "direction": "BULLISH" if net_dir > 0 else "BEARISH",
+        "direction": gdir,
+        "guinevere_direction": gdir,
         "confidence": conf,
-        "modifier": signed,                       # signed: + supports LONG, - supports SHORT
+        "confidence_level": conf,
+        "modifier": mag,                    # positive-only boost for the FAVOURED direction
+        "favoured": favoured,               # LONG / SHORT -- the direction Guinevere boosts
+        "boost_direction": favoured,
+        "redirect_direction": favoured,     # if the setup opposes Guinevere, look for THIS
+        "redirect_modifier": mag,           # boost to apply if a favoured-direction setup appears
+        "opposing_modifier": 0,             # explicit: the opposing direction is NEVER penalised
         "mixed": mixed,
         "primary_event": primary["headline"] or primary["event_type"],
         "primary_type": primary["event_type"],
         "secondary_event": (secondary["headline"] if secondary else None),
+        "neutral_reason": ("Guinevere favours %s (+%d). Opposing setups get NO penalty -- "
+                           "look for a %s setup; if none, trade normally."
+                           % (favoured, mag, favoured)),
         "decay_factor": primary["decay"],
         "drivers": ranked,
         "as_of": now_utc.strftime("%Y-%m-%dT%H:%M:%SZ"),
@@ -200,8 +217,13 @@ def build_signal(instrument, articles, calendar_events, now_utc=None, month_tren
 
 def _neutral(instrument, now_utc, drivers=None):
     return {
-        "instrument": instrument, "direction": "NEUTRAL", "confidence": "NEUTRAL",
-        "modifier": 0, "mixed": bool(drivers), "primary_event": None, "primary_type": None,
-        "secondary_event": None, "decay_factor": 0.0, "drivers": drivers or [],
+        "instrument": instrument, "direction": "NEUTRAL", "guinevere_direction": "NEUTRAL",
+        "confidence": "NEUTRAL", "confidence_level": "NEUTRAL",
+        "modifier": 0, "favoured": "", "boost_direction": "", "redirect_direction": "",
+        "redirect_modifier": 0, "opposing_modifier": 0,
+        "mixed": bool(drivers), "primary_event": None, "primary_type": None,
+        "secondary_event": None,
+        "neutral_reason": "No significant news -- your technical indicators carry full weight.",
+        "decay_factor": 0.0, "drivers": drivers or [],
         "as_of": now_utc.strftime("%Y-%m-%dT%H:%M:%SZ"),
     }
