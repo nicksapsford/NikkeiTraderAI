@@ -86,6 +86,10 @@ from notifier_nikkei      import (
 from paper_trader_nikkei  import PaperTraderNikkei, TRADES_LOG
 import performance_nikkei
 import guinevere_news
+try:
+    import guinevere2                       # Guinevere 2.0 directional news (Commission 018)
+except Exception:
+    guinevere2 = None
 from performance_nikkei   import (
     get_performance_context, get_perf_dashboard_dict, invalidate_cache,
     generate_milestone_review, process_new_phantom_verdicts,
@@ -508,13 +512,17 @@ def run_candle_tick(
                             indicators_1d=ind_1d, indicators_1h=ind_1h, indicators_5m=ind_5m)
             return
 
-    # Guinevere news context for Arthur (cached fetch; reused by the post-decision
-    # confidence adjustment below). Change 4, System 1 Review.
-    try:
-        news_ctx = guinevere_news.format_news_context()
-    except Exception as _e:
-        news_ctx = None
-        log.warning("Guinevere news context failed: %s", _e)
+    # Guinevere 2.0 -- directional macro intelligence for Arthur (Commission 018).
+    # Replaces the old +/-8 news adjustment: Guinevere 2.0 advises Arthur IN THE PROMPT
+    # (DECISION HIERARCHY) and Arthur sets his own confidence (Principle 14). Fail-safe:
+    # any failure yields a NEUTRAL advisory and never blocks the consult.
+    guin_advisory, guin_sig = None, None
+    if guinevere2 is not None:
+        try:
+            guin_sig = guinevere2.get_signal("NIKKEI")
+            guin_advisory = guinevere2.get_advisory("NIKKEI")
+        except Exception as _e:
+            log.warning("Guinevere 2.0 failed: %s", _e)
 
     # Call Arthur
     decision = get_trading_decision(
@@ -526,22 +534,18 @@ def run_candle_tick(
         current_trade=stanley.current_trade,
         calendar_context=cal_context,
         perf_context=perf_context,
-        news_context=news_ctx,
+        guinevere_advisory=guin_advisory,
     )
 
-    # Guinevere news -> Arthur confidence adjustment (direction-aware +/-8; soft,
-    # additive, never blocks). Change 4, System 1 Review.
-    _naction = decision.get("decision", "STAY_OUT")
-    if _naction in ("ENTER_LONG", "ENTER_SHORT"):
-        _ndir = "LONG" if _naction == "ENTER_LONG" else "SHORT"
+    # Guinevere 2.0 signal logging for ongoing Gaius assessment (Commission 018): log the
+    # signal + Arthur's response so Gaius can score Guinevere 2.0's value over time.
+    if guinevere2 is not None and guin_sig is not None:
         try:
-            _news_adj, _news_reason = guinevere_news.get_confidence_adjustment(_ndir)
-            _nbase = float(decision.get("confidence") or 0)
-            decision["confidence"] = max(0, min(100, _nbase + _news_adj))
-            decision["news_adjustment"] = _news_adj
-            log.info(_news_reason)
+            guinevere2.log_decision(guin_sig,
+                                    arthur_decision=decision.get("decision", ""),
+                                    arthur_confidence_after=decision.get("confidence", ""))
         except Exception as _e:
-            log.warning("Guinevere news adjustment failed: %s", _e)
+            log.warning("Guinevere 2.0 logging failed: %s", _e)
 
     log.info(format_decision_for_display(decision))
     _push_dashboard(stanley, account, decision=decision, pre_checks=individual_checks,

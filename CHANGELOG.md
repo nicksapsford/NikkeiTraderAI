@@ -2,6 +2,25 @@
 
 All notable changes to NikkeiTrader (Albion Trading Desk). All times UTC.
 
+## [1.12.0] - 2026-07-31  —  Guinevere 2.0 directional news intelligence (Commission 018)
+### Added
+- Vendored the shared **`guinevere2/`** package (directional macro-news engine) verbatim
+  from the desk reference. One consult per Arthur tick fetches a net directional signal for
+  `NIKKEI` (Alpha Vantage NEWS_SENTIMENT, cached 15 min), fully fail-safe -> NEUTRAL on any
+  error, and never blocks a trading tick.
+- `agent_brain_nikkei.py`: added the **DECISION HIERARCHY** block to Arthur's system prompt
+  (Guinevere = Level 1 when active, capped +/-25 context modifier, never a filter) and a new
+  `guinevere_advisory` param prepended above the market data.
+- `main_nikkeitrader.py`: fetch Guinevere advisory/signal before the Arthur consult, pass the
+  advisory into the prompt, and log every signal + Arthur's response to `guinevere2_log.csv`
+  for ongoing Gaius assessment.
+- `dashboard_nikkei.py`: added a **GUINEVERE 2.0 — Macro Signal** panel (signal colour,
+  modifier, primary event, last-updated) fed by a new `/api/state` `guinevere2` field.
+### Removed
+- The old Guinevere 1.0 **+/-8 post-decision confidence adjustment** and its `news_context`
+  prompt injection (superseded by Guinevere 2.0's in-prompt advisory). The legacy
+  `guinevere_news` module is retained only for the phantom-tracker sentiment score.
+
 ## [1.2.0] - 2026-07-24
 ### Changed — fully bidirectional (remove Morgan SHORT gate) (Cody, Nick's direct order)
 - Removed the inline **Morgan SHORT gate** from `main_nikkeitrader.py`: the block that

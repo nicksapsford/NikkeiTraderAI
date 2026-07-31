@@ -22,7 +22,24 @@ from pathlib import Path
 import pandas as pd
 from flask import Flask, Response, jsonify, request
 
-import guinevere_news   # Part 5: Guinevere news sentiment + keyword editor
+import guinevere_news   # Part 5: Guinevere news sentiment + keyword editor (legacy G1)
+try:
+    import guinevere2   # Guinevere 2.0 directional news (Commission 018); fail-safe below
+except Exception:
+    guinevere2 = None
+
+
+def _guinevere2_panel():
+    """Compact Guinevere 2.0 signal dict for /api/state (reuses the shared 15-min cache).
+    Fail-safe -> NEUTRAL so the dashboard never errors on an API/key problem."""
+    if guinevere2 is None:
+        return {"signal": "NEUTRAL", "modifier": 0, "confidence": "NEUTRAL",
+                "primary_event": "-", "as_of": ""}
+    try:
+        return guinevere2.format_dashboard(guinevere2.get_signal("NIKKEI"))
+    except Exception:
+        return {"signal": "NEUTRAL", "modifier": 0, "confidence": "NEUTRAL",
+                "primary_event": "-", "as_of": ""}
 
 log = logging.getLogger("NikkeiTrader.Dashboard")
 # ALBION STANDING RULE: all log timestamps are UTC (never BST/local). See main_nikkeitrader.py.
@@ -918,6 +935,23 @@ function renderPerfCard(perf){
 }
 
 /* ── Right panel: kill status, pre-checks/checklist, calendar ───────────── */
+/* ── GUINEVERE 2.0 -- Macro Signal panel (Commission 018; from /api/state) ── */
+function renderGuin2Compact(g){
+  if(!g){ return ''; }
+  var sig = g.signal || 'NEUTRAL';
+  var col = sig==='BULLISH' ? 'var(--bull,#26a69a)' : (sig==='BEARISH' ? 'var(--bear,#ef5350)' : 'var(--muted,#888)');
+  var mod = (g.modifier>0?'+':'') + (g.modifier||0);
+  var ev = g.primary_event ? (' &middot; ' + g.primary_event) : '';
+  var mix = g.mixed ? ' (MIXED)' : '';
+  var t = (g.as_of||'').substring(11,16);
+  return '<div class="card" style="flex-shrink:0"><div class="card-title gold">GUINEVERE 2.0 &mdash; Macro Signal</div>'
+    + '<div style="font-size:13px;line-height:1.7;">'
+    + '<span style="color:' + col + ';font-weight:700;">' + sig + mix + '</span> '
+    + '<span style="color:var(--muted);">modifier ' + mod + ' on LONGs</span><br>'
+    + '<span style="color:var(--muted);font-size:11px;">' + (g.confidence||'') + ev + '</span><br>'
+    + '<span style="color:var(--muted);font-size:10px;">as of ' + (t||'--') + ' UTC</span>'
+    + '</div></div>';
+}
 /* ── GUINEVERE NEWS panel (Part 5; polls /api/news every 60s) ───────────── */
 var _newsData = null;
 function renderNewsCompact(n){
@@ -1050,7 +1084,7 @@ function renderRightPanel(d){
   var calHTML = '<div class="card" style="flex-shrink:0"><div class="card-title gold">Guinevere — UK Calendar</div>' +
     '<div style="color:var(--text);font-size:11px;line-height:1.5;">' + calText + '</div></div>';
 
-  return killHTML + panelHTML + calHTML + renderNewsCompact(_newsData) + renderSoqCompact(d.stay_out_quality);
+  return killHTML + panelHTML + calHTML + renderGuin2Compact(d.guinevere2) + renderNewsCompact(_newsData) + renderSoqCompact(d.stay_out_quality);
 }
 
 /* ── STAY OUT QUALITY panel ─────────────────────────────────────────────── */
@@ -1727,6 +1761,7 @@ def api_state():
         "trades":          trades,
         "monthly_stats":   monthly,
         "stay_out_quality": get_stay_out_quality(),
+        "guinevere2":      _guinevere2_panel(),
         "version_string":  VERSION_STRING,
     }
     payload.update(flat)
