@@ -296,12 +296,22 @@ def run_all_pre_checks(
     current_trade=None,
     bar_1d: Optional[pd.Series] = None,
     proposed_direction: str = "BOTH",
+    relax_soft: bool = False,
 ) -> dict:
     """
     Run all pre-checks in order. Returns on first failure.
     Claude is only called if this returns passed=True.
+
+    relax_soft (Guinevere 2.0 HIGH-ALERT active consultation, 31 Jul 2026): when True,
+    SKIP only the three SOFT quality checks -- 1h SSL agreement, 5m TMO momentum, Candle
+    confirmed -- so a HIGH-confidence Guinevere signal can force an Arthur consult on an
+    otherwise soft-blocked tick. The SAFETY checks (kill switch / daily loss / consecutive
+    losses / cooldown / session phase) run FIRST and are NEVER relaxed, and the Daily trend
+    filter, 1h RSI and Not-choppy (volatility) quality checks are ALSO still enforced -- so no
+    risk control can ever be bypassed. Arthur still needs >= 60 confidence to act (enforced in main).
     """
     log.info("--- Lancelot running pre-checks ---")
+    _RELAXABLE = {"1h SSL agreement", "5m TMO momentum", "Candle confirmed"}
 
     safety_checks = [
         ("Kill switch",        lambda: check_kill_switch(account)),
@@ -332,13 +342,17 @@ def run_all_pre_checks(
             ("Candle confirmed",    lambda: check_candle_confirmed(bar_1h, bar_5m)),
         ]
         for name, fn in quality_checks:
+            if relax_soft and name in _RELAXABLE:
+                log.info("  [RELAXED] %s -- Guinevere HIGH alert (soft check skipped)", name)
+                continue
             result = fn()
             if not result["passed"]:
                 log.info("  [FAIL] %s -- %s", name, result["reason"])
                 return result
             log.info("  [PASS] %s", name)
 
-    log.info("  All pre-checks passed -- ready for Arthur")
+    log.info("  All pre-checks passed -- ready for Arthur%s",
+             " (Guinevere HIGH-alert relaxed)" if relax_soft else "")
     return _pass()
 
 
