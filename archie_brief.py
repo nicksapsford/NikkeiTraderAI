@@ -249,14 +249,16 @@ def build_system_brief(state, system_name, asset_label, logs_dir=None, now_utc=N
     a("Net Saved (fair, bench FLAT): GBP +%s | Net Missed (fair): GBP -%s" % (_num(_svf, 2), _num(_msf, 2)))
     _phantom_recent(soq, a, show_market=("crypto" in (system_name or "").lower()))
     a("")
-    a("GUINEVERE")
+    a("GUINEVERE 2.0")
+    try:
+        import guinevere2
+        a(guinevere2.format_archie(guinevere2.get_signal("NIKKEI")))
+    except Exception:
+        a("Guinevere 2.0 NEUTRAL (unavailable)")
+    # Legacy Guinevere 1.0 news line (informational; no longer feeds Arthur):
     gkind = _guinevere_kind(system_name)
     if gkind == "news":
         _news_line(a)
-    elif gkind == "calendar":
-        a("Calendar only -- no news module (calendar shown under MARKET)")
-    else:
-        a("No Guinevere module")
     a("")
     a("LANCELOT PRE-CHECKS")
     pc = state.get("pre_checks")
