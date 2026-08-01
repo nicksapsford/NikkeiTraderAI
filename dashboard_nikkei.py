@@ -1084,7 +1084,9 @@ function renderRightPanel(d){
   var calHTML = '<div class="card" style="flex-shrink:0"><div class="card-title gold">Guinevere — UK Calendar</div>' +
     '<div style="color:var(--text);font-size:11px;line-height:1.5;">' + calText + '</div></div>';
 
-  return killHTML + panelHTML + calHTML + renderGuin2Compact(d.guinevere2) + renderNewsCompact(_newsData) + renderSoqCompact(d.stay_out_quality);
+  // Legacy Guinevere 1.0 compact panel retired 1 Aug 2026 (G2 panel only). guinevere_news
+  // stays imported for the phantom guinevere_score; its /api/news page remains as a dormant tool.
+  return killHTML + panelHTML + calHTML + renderGuin2Compact(d.guinevere2) + renderSoqCompact(d.stay_out_quality);
 }
 
 /* ── STAY OUT QUALITY panel ─────────────────────────────────────────────── */
