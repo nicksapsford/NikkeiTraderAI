@@ -17,7 +17,8 @@ Requires ALPHA_VANTAGE_API_KEY in .env. ALL TIMES UTC.
 from .guinevere2_main import (
     get_signal, get_advisory, format_dashboard, format_archie, log_decision, is_high_alert,
 )
+from .news_fetcher import feed_health
 
 __all__ = ["get_signal", "get_advisory", "format_dashboard", "format_archie",
-           "log_decision", "is_high_alert"]
-__version__ = "2.1.0"   # BOOSTS AND REDIRECTS, NEVER BLOCKS (31 Jul 2026)
+           "log_decision", "is_high_alert", "feed_health"]
+__version__ = "2.3.0"   # FEED FIX + ATTRIBUTION FIX: word-boundary classify, relevance gating (3 Aug 2026)

@@ -16,6 +16,7 @@ import logging
 from datetime import datetime, timezone
 
 from . import news_fetcher, calendar_checker, signal_engine, signal_logger
+from .news_fetcher import feed_health
 
 log = logging.getLogger("Guinevere2.Main")
 
@@ -86,7 +87,13 @@ def _tier(strength):
 
 def format_dashboard(sig):
     """Compact dict for the dashboard Guinevere 2.0 panel. `modifier` is a POSITIVE boost
-    for the `favoured` direction (never negative)."""
+    for the `favoured` direction (never negative). Includes FEED HEALTH (3 Aug 2026) --
+    newest-ARTICLE age + colour (GREEN<6h/AMBER 6-24h/RED>24h or empty) so a blinded feed
+    shows RED on the dashboard instead of a silent NEUTRAL."""
+    try:
+        fh = feed_health(sig.get("instrument", "")) if sig.get("instrument") else {}
+    except Exception:
+        fh = {}
     return {
         "signal": sig.get("direction", "NEUTRAL"),
         "modifier": sig.get("modifier", 0),          # positive boost only
@@ -95,6 +102,10 @@ def format_dashboard(sig):
         "primary_event": sig.get("primary_event") or "-",
         "mixed": sig.get("mixed", False),
         "as_of": sig.get("as_of", ""),
+        "feed_color": fh.get("color", "RED"),        # feed health by newest ARTICLE age
+        "feed_age_hours": fh.get("age_hours"),
+        "feed_articles": fh.get("num_articles", 0),
+        "feed_newest": fh.get("newest_article_utc", ""),
     }
 
 

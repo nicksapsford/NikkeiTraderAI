@@ -1,12 +1,27 @@
 """
-Guinevere 2.0 -- signal engine (Commission 018 core intelligence, 31 Jul 2026).
+Guinevere 2.0 -- signal engine (Commission 018 core intelligence 31 Jul 2026;
+ATTRIBUTION FIX 3 Aug 2026).
 
 Turns raw Alpha Vantage news + calendar context into ONE net directional signal per
 instrument, via: event classification -> direction matrix -> decay -> conflict
 resolution -> confidence modifier (clamped +/-25). Pure/deterministic and unit-tested;
 no network or file I/O here. ALL TIMES UTC.
+
+ATTRIBUTION FIX (3 Aug 2026, Nick-approved) -- stops the wider macro feed converting
+NEUTRAL into confidently-wrong:
+  1. Keyword scans are WORD-BOUNDARY matched, so "fed" no longer matches "FedEx",
+     "easing" no longer matches "increasing", "war" no longer matches "warehouse".
+     Central-bank classification needs a NAMED bank OR a rate-ACTION phrase; bare
+     "strike" no longer triggers geopolitical (only military-context strikes do).
+  2. The eff_rel = max(rel, 0.3) floor is REMOVED for non-global events -- a zero-
+     relevance article contributes ZERO.
+  3. Instrument-relevance gating: a non-global event drives an instrument ONLY if the
+     article is genuinely relevant to it (matching ticker relevance OR an instrument
+     keyword). Genuinely GLOBAL scheduled-macro central-bank decisions still route to
+     all matrix instruments as designed (they keep the relevance floor).
 """
 
+import re
 from datetime import datetime, timezone
 
 from . import config as C
@@ -20,15 +35,30 @@ _BASE_BY_RANK = {
     C.RANK_MARKET_FLOW:      8,
 }
 
+# Relevance floor kept ONLY for genuinely-global scheduled-macro central-bank decisions,
+# which move every matrix instrument by design even without an instrument-specific term.
+_GLOBAL_MACRO_FLOOR = 0.3
+
+_WORD_RE = {}
+
 
 def _contains(text, kws):
-    return any(k in text for k in kws)
+    """Word-boundary keyword scan (3 Aug 2026): matches whole words/phrases only, so short
+    keywords ('fed', 'war', 'easing', 'dow') never false-match inside longer words."""
+    for k in kws:
+        pat = _WORD_RE.get(k)
+        if pat is None:
+            pat = re.compile(r'\b' + re.escape(k) + r'\b')
+            _WORD_RE[k] = pat
+        if pat.search(text):
+            return True
+    return False
 
 
 def classify_article(article):
     """Return a list of event_type strings this article represents (may be empty).
-    Uses title+summary keyword scan; AV overall sentiment disambiguates hawkish/dovish
-    and strong/weak when the keywords alone are directionless."""
+    Uses word-boundary title+summary keyword scan; AV overall sentiment disambiguates
+    hawkish/dovish and strong/weak when the keywords alone are directionless."""
     text = ((article.get("title") or "") + " " + (article.get("summary") or "")).lower()
     try:
         av_sent = float(article.get("overall_sentiment_score") or 0.0)
@@ -36,8 +66,10 @@ def classify_article(article):
         av_sent = 0.0
     events = []
 
-    # RANK 1 -- central bank / scheduled macro
-    if _contains(text, C.KW_CENTRAL_BANK):
+    # RANK 1 -- central bank / scheduled macro. Requires a NAMED bank AND a rate-ACTION
+    # phrase (true compound context) -- a mere "the Fed" name-drop in an opinion piece is
+    # NOT a policy decision and must not create a global macro driver.
+    if _contains(text, C.KW_CB_NAMES) and _contains(text, C.KW_CB_ACTION):
         if _contains(text, ["boj", "bank of japan"]):
             events.append("BOJ_HAWKISH" if _contains(text, C.KW_HAWKISH) else
                           ("BOJ_DOVISH" if _contains(text, C.KW_DOVISH) else
@@ -68,6 +100,15 @@ def classify_article(article):
         else:
             events.append("DATA_STRONG" if av_sent > 0.05 else
                           ("DATA_WEAK" if av_sent < -0.05 else None))
+
+    # RANK 3 -- oil supply / production (3 Aug 2026). Gated on oil context so only genuine
+    # crude-supply stories (OPEC+ output, glut, production cut) classify -- not "Toyota cuts
+    # production". OIL_SUPPLY_UP = more supply = bearish; OIL_SUPPLY_DOWN = cut = bullish.
+    if _contains(text, C.KW_OIL_CONTEXT):
+        if _contains(text, C.KW_SUPPLY_UP):
+            events.append("OIL_SUPPLY_UP")
+        elif _contains(text, C.KW_SUPPLY_DOWN):
+            events.append("OIL_SUPPLY_DOWN")
     return [e for e in events if e]
 
 
@@ -82,8 +123,10 @@ def _article_age_hours(article, now_utc):
 
 
 def _instrument_relevance(article, cfg):
-    """0..1 relevance of an article to an instrument (max of AV ticker relevance and a
-    keyword-match flag). Lets us attribute topic/keyword articles that lack a ticker tag."""
+    """0..1 relevance of an article to an instrument: max of AV ticker relevance and a
+    WORD-BOUNDARY keyword match. 0.0 when the article names neither the instrument's
+    tickers nor any of its keywords -- such articles no longer attribute (unless the event
+    is a genuinely-global central-bank decision, handled in build_signal)."""
     rel = 0.0
     for ts in (article.get("ticker_sentiment") or []):
         if ts.get("ticker") in cfg["tickers"]:
@@ -125,10 +168,17 @@ def build_signal(instrument, articles, calendar_events, now_utc=None, month_tren
                 continue          # matrix already scopes BOE->FTSE, BOJ->NIKKEI etc.
             rank = C.EVENT_RANK[etype]
             is_macro = etype in C.SCHEDULED_MACRO_EVENTS
+            # ATTRIBUTION GATE (3 Aug 2026): genuinely-global scheduled-macro central-bank
+            # decisions route to all matrix instruments (relevance floor kept). Everything
+            # else (geopolitical, data) must be genuinely relevant to THIS instrument --
+            # zero relevance contributes zero (no floor). Kills confident-noise.
+            if is_macro:
+                eff_rel = max(rel, _GLOBAL_MACRO_FLOOR)
+            else:
+                if rel <= 0.0:
+                    continue
+                eff_rel = rel
             dec = C.decay_factor(age_h, is_macro)
-            # Global macro events (geopolitical/Fed/data) move ALL matrix instruments even
-            # when the article carries no instrument-specific ticker tag, so floor relevance.
-            eff_rel = max(rel, 0.3)
             conf_scale = 0.6 + 0.4 * min(1.0, eff_rel + mag)   # 0.6..1.0
             strength = min(C.PER_DRIVER_CAP, _BASE_BY_RANK[rank] * dec * conf_scale)
             drivers.append({"event_type": etype, "rank": rank, "direction": direction,

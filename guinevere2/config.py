@@ -34,32 +34,67 @@ def decay_factor(age_hours, is_scheduled_macro=False):
     return 0.25
 
 # --- Keyword sets for event classification ------------------------------------
-KW_GEOPOLITICAL = ["attack", "strike", "war", "invasion", "sanction", "conflict",
-                   "military", "troops", "missile", "drone", "airstrike", "escalat"]
-KW_DEESCALATION = ["ceasefire", "truce", "peace deal", "de-escalat", "diplomacy", "withdraw"]
-KW_CENTRAL_BANK = ["fed", "fomc", "rate hike", "rate cut", "boe", "bank of england",
-                   "boj", "bank of japan", "hawkish", "dovish", "powell", "tightening",
-                   "easing", "interest rate", "monetary policy"]
-KW_HAWKISH = ["hawkish", "rate hike", "hike", "tightening", "higher for longer", "inflation concern"]
-KW_DOVISH  = ["dovish", "rate cut", "cut", "easing", "stimulus", "pause"]
+# NOTE (3 Aug 2026 feed fix): keyword scans are now WORD-BOUNDARY matched (signal_engine
+# ._contains), so "fed" no longer matches "FedEx", "easing" no longer matches "increasing",
+# "war" no longer matches "warehouse". Bare "strike" removed (matched "strike a deal");
+# only military-context strikes trigger geopolitical now.
+KW_GEOPOLITICAL = ["war", "invasion", "sanction", "conflict", "military", "troops",
+                   "missile", "drone", "airstrike", "air strike", "military strike",
+                   "missile strike", "drone strike", "escalat", "attack"]
+KW_DEESCALATION = ["ceasefire", "truce", "peace deal", "peace talks", "de-escalat",
+                   "diplomacy", "withdraw"]
+# Central-bank classification now needs a NAMED bank OR a rate-ACTION phrase (compound
+# context) -- a passing mention of "interest rate" no longer flags an equity story as Fed.
+KW_CB_NAMES  = ["fed", "fomc", "federal reserve", "boe", "bank of england", "boj",
+                "bank of japan", "ecb", "powell", "central bank"]
+KW_CB_ACTION = ["rate hike", "rate hikes", "rate cut", "rate cuts", "rate rise", "rate rises",
+                "rate decision", "rate hold", "hold rates", "holds rates", "held rates",
+                "raise rates", "raises rates", "raised rates", "cut rates", "cuts rates",
+                "lower rates", "lowered rates", "hike rates", "hikes rates", "hiked rates",
+                "basis point", "basis points", "hawkish", "dovish", "tightening",
+                "monetary easing", "quantitative", "rates steady", "rates unchanged",
+                "rate unchanged"]
+KW_CENTRAL_BANK = KW_CB_NAMES + KW_CB_ACTION   # kept for back-compat / external refs
+KW_HAWKISH = ["hawkish", "rate hike", "rate rise", "hike rates", "tightening",
+              "higher for longer", "inflation concern"]
+KW_DOVISH  = ["dovish", "rate cut", "cut rates", "monetary easing", "stimulus", "rate hold"]
 KW_ECON_DATA = ["gdp", "pmi", "inflation", "cpi", "unemployment", "jobs", "payroll",
                 "nfp", "retail sales", "manufacturing", "consumer confidence"]
 KW_STRONG_DATA = ["beat", "stronger", "higher than expected", "rose", "surge", "robust", "tops"]
 KW_WEAK_DATA   = ["miss", "weaker", "lower than expected", "fell", "slump", "disappoint", "contract"]
+
+# Oil supply / production (3 Aug 2026 addition, Nick-approved). OPEC+/output news the wider
+# ticker+topic feed now surfaces but which no event type previously caught (the OPEC half of
+# the 3 Aug incident). GATED on oil context (KW_OIL_CONTEXT) so a non-oil "cuts production"
+# story never triggers; the build_signal relevance gate is a second guard.
+KW_OIL_CONTEXT = ["oil", "crude", "opec", "brent", "wti", "barrel", "petroleum", "refinery"]
+KW_SUPPLY_UP = ["boost production", "boost output", "raise output", "raise production",
+                "increase production", "increase output", "production increase",
+                "output increase", "more barrels", "supply glut", "oversupply",
+                "ramp up production", "output hike", "higher output", "increase supply",
+                "boost oil production", "raise oil production", "adds barrels"]
+KW_SUPPLY_DOWN = ["production cut", "output cut", "cut production", "cut output",
+                  "reduce output", "reduce production", "supply cut", "curb output",
+                  "curb production", "slash production", "production curb", "lower output",
+                  "cut oil production", "cut supply", "reduce supply", "output reduction"]
 
 # --- Per-instrument Alpha Vantage query config --------------------------------
 # tickers: AV NEWS_SENTIMENT tickers proven to return tagged articles (tested 31 Jul).
 # topics:  AV topic filters. keywords: title/summary scan to attribute events to us.
 INSTRUMENTS = {
     "FTSE":   {"tickers": ["FOREX:GBP"], "topics": ["financial_markets", "economy_macro"],
-               "keywords": ["ftse", "uk ", "u.k.", "london", "britain", "sterling", "gilt", "boe"]},
+               "keywords": ["ftse", "footsie", "uk", "london", "britain", "british", "sterling", "gilt", "boe"]},
     "GOLD":   {"tickers": ["GLD"], "topics": ["economy_macro", "economy_monetary"],
                "keywords": ["gold", "xau", "safe haven", "safe-haven", "bullion", "precious metal"]},
     "OIL":    {"tickers": ["BNO", "USO"], "topics": ["energy_transportation"],
-               "keywords": ["oil", "crude", "brent", "opec", "wti", "barrel", "refinery", "petroleum"]},
+               "keywords": ["oil", "crude", "brent", "opec", "wti", "barrel", "refinery", "petroleum", "hormuz"]},
     "US500":  {"tickers": ["SPY"], "topics": ["financial_markets", "economy_macro", "economy_monetary"],
-               "keywords": ["s&p", "sp500", "s&p 500", "wall street", "nasdaq", "dow", "us stock"]},
-    "NIKKEI": {"tickers": ["EWJ", "FOREX:JPY"], "topics": ["financial_markets"],
+               "keywords": ["s&p", "sp500", "s&p 500", "wall street", "nasdaq", "dow", "us stock", "us stocks"]},
+    # NIKKEI (3 Aug 2026 feed fix): the combined tickers=EWJ,FOREX:JPY was REJECTED by AV
+    # ("Invalid inputs" -- mixing an equity ETF with a FOREX ticker). Dropped to the single
+    # valid + FRESH FOREX:JPY; Japan macro now comes via topics=economy_macro/financial_markets
+    # + the keyword attribution below (EWJ alone returned only week-old articles).
+    "NIKKEI": {"tickers": ["FOREX:JPY"], "topics": ["economy_macro", "financial_markets"],
                "keywords": ["nikkei", "japan", "tokyo", "boj", "yen", "japanese"]},
 }
 
@@ -77,6 +112,8 @@ DIRECTION_MATRIX = {
     "BOJ_DOVISH":      {"NIKKEI": BULL},
     "DATA_STRONG":     {"US500": BULL, "FTSE": BULL, "OIL": BULL, "GOLD": BEAR, "NIKKEI": BULL},
     "DATA_WEAK":       {"US500": BEAR, "FTSE": BEAR, "OIL": BEAR, "GOLD": BULL, "NIKKEI": BEAR},
+    "OIL_SUPPLY_UP":   {"OIL": BEAR},   # more supply (OPEC+ boost / glut) -> bearish crude
+    "OIL_SUPPLY_DOWN": {"OIL": BULL},   # supply cut (OPEC+ curb)          -> bullish crude
     "MONTH_END":       {},   # applied to the strongest trender at runtime (BEARISH bias)
     "QUARTER_END":     {},
 }
@@ -88,6 +125,7 @@ EVENT_RANK = {
     "BOJ_HAWKISH": RANK_SCHEDULED_MACRO, "BOJ_DOVISH": RANK_SCHEDULED_MACRO,
     "GEO_ESCALATION": RANK_GEOPOLITICAL, "GEO_DEESCALATION": RANK_GEOPOLITICAL,
     "DATA_STRONG": RANK_ECON_DATA, "DATA_WEAK": RANK_ECON_DATA,
+    "OIL_SUPPLY_UP": RANK_ECON_DATA, "OIL_SUPPLY_DOWN": RANK_ECON_DATA,
     "MONTH_END": RANK_MARKET_FLOW, "QUARTER_END": RANK_MARKET_FLOW,
 }
 SCHEDULED_MACRO_EVENTS = {"FED_HAWKISH", "FED_DOVISH", "BOE_HAWKISH", "BOE_DOVISH",
@@ -97,3 +135,18 @@ SCHEDULED_MACRO_EVENTS = {"FED_HAWKISH", "FED_DOVISH", "BOE_HAWKISH", "BOE_DOVIS
 POLL_IN_SESSION_SEC = 300       # 5 min in-session
 POLL_OFF_SESSION_SEC = 1800     # 30 min off-session
 CACHE_TTL_SEC = 900             # 15-min cache (never hit API on every Arthur tick)
+
+# --- Universal macro sweep (Commission 018 FEED FIX, 3 Aug 2026) --------------
+# ONE ticker-less macro query per poll cycle, merged into EVERY instrument's feed and routed
+# via DIRECTION_MATRIX. Catches geopolitical/macro stories (Iran, OPEC, Fed) that carry no
+# instrument-specific ticker tag -- the exact gap that missed the 3 Aug Oil catalysts. The
+# per-instrument `topics` above are now sent too (they were configured but never queried).
+# Shared across instruments via MACRO_CACHE_KEY so it runs once per TTL. See news_fetcher.
+MACRO_TOPICS = "economy_macro"
+MACRO_TIME_FROM_HOURS = 6       # time_from = now - 6h on the MACRO query ONLY (Nick-approved)
+MACRO_LIMIT = 50
+MACRO_CACHE_KEY = "news:__MACRO__"
+
+# --- Feed-health thresholds (dashboard indicator, by newest ARTICLE age) ------
+FEED_GREEN_MAX_H = 6            # GREEN: newest article < 6h
+FEED_AMBER_MAX_H = 24          # AMBER: 6-24h  |  RED: > 24h or empty/failed
