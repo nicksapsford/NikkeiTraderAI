@@ -1,11 +1,35 @@
 """
-Guinevere 2.0 -- configuration (Commission 018 build, 31 Jul 2026).
+Guinevere 2.0 -- configuration (Commission 018 build, 31 Jul 2026;
+Uther amalgamation, Commission 019, 3 Aug 2026).
 
 Instrument -> Alpha Vantage query config, the event-type -> per-instrument DIRECTION
 matrix, conflict-resolution RANKS, signal DECAY curve, and the confidence-modifier scale.
 Vendored identically into each of the 6 Arthur systems; behaviour is driven entirely by
 data here so tuning never touches logic. ALL TIMES UTC.
 """
+
+import os
+
+# --- Signal source (Commission 019 amalgamation, 3 Aug 2026) ------------------
+# "uther"   = consume Uther's AI assessments as event drivers (DEFAULT; retires keywords).
+# "keyword" = legacy in-package keyword classifier (dormant fallback, kept ~2 weeks then cut).
+# Uther reads the world in context; this engine still applies decay / conflict resolution /
+# caps / the five rules -- the discipline layer is unchanged, only the event SOURCE differs.
+SIGNAL_SOURCE = (os.getenv("GUINEVERE_SIGNAL_SOURCE", "uther") or "uther").strip().lower()
+
+# Confidence-weighted driver strength in Uther mode (before decay/conflict). Safety valve
+# while Uther's track record builds: a wrong LOW moves Arthur +5; a wrong HIGH stays <= +25
+# and still cannot block or force anything (Arthur needs 60+, all Lancelot controls enforced).
+UTHER_CONF_BASE = {"HIGH": 22, "MEDIUM": 13, "LOW": 5}   # brief bands: HIGH 15-25/MED 10-15/LOW<=5
+UTHER_MAX_AGE_H = 8.0     # ignore assessments older than this (decay has zeroed them)
+UTHER_STALE_MIN = 45      # signals file older than this (minutes) -> feed shown STALE (still decays)
+
+# Path to Uther's amalgamation feed (logs/uther_signals.json). Default: sibling UtherAI repo
+# (all Albion repos are siblings on the desk -- same pattern RoundTable uses). Override with
+# GUINEVERE_UTHER_SIGNALS. Fail-safe: unreadable -> no drivers -> NEUTRAL (NEVER keyword).
+_HERE = os.path.dirname(os.path.abspath(__file__))
+UTHER_SIGNALS_PATH = os.getenv("GUINEVERE_UTHER_SIGNALS") or os.path.normpath(
+    os.path.join(_HERE, os.pardir, os.pardir, "UtherAI", "logs", "uther_signals.json"))
 
 # --- Confidence-modifier scale (Principle 14: context, never a filter) --------
 MODIFIER_CAP = 25          # hard cap +/- in either direction (indicators stay primary)

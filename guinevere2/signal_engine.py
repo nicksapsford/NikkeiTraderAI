@@ -140,18 +140,31 @@ def _instrument_relevance(article, cfg):
     return rel
 
 
-def build_signal(instrument, articles, calendar_events, now_utc=None, month_trenders=None):
-    """Produce the net signal dict for one instrument.
-    articles: list of AV feed dicts. calendar_events: list of dicts from calendar_checker
-    ({'event_type','headline'}). month_trenders: optional set of instruments that trended
-    strongly this month (month-end bearish bias applies to them)."""
-    now_utc = now_utc or datetime.now(timezone.utc)
-    cfg = C.INSTRUMENTS.get(instrument)
-    if cfg is None:
-        return _neutral(instrument, now_utc)
+def build_uther_drivers(instrument, now_utc):
+    """AMALGAMATION (Commission 019): event drivers from Uther's AI assessments instead of the
+    keyword classifier. Uther supplies direction (per instrument), rank and confidence; this
+    engine still applies decay + the confidence-weighted strength cap. Rank-1 (scheduled macro)
+    holds 24h; everything else decays with the risk-off curve. Fail-safe: none -> []."""
+    from . import uther_source
+    drivers = []
+    for a in uther_source.get_assessments(instrument, now_utc):
+        rank = a["rank"] if a["rank"] in (1, 2, 3, 4) else 4
+        is_macro = (rank == 1)
+        dec = C.decay_factor(a["age_h"], is_macro)
+        base = C.UTHER_CONF_BASE.get(a["confidence"], 5)
+        strength = min(C.MODIFIER_CAP, base * dec)     # HIGH<=22, MED<=13, LOW<=5, all <=cap
+        drivers.append({"event_type": a["event_type"], "rank": rank, "direction": a["direction"],
+                        "strength": strength, "decay": round(dec, 2), "age_h": round(a["age_h"], 1),
+                        "headline": (a["headline"] or a["event_type"])[:120],
+                        "confidence": a["confidence"], "reasoning": a["reasoning"],
+                        "source": "Uther AI"})
+    return drivers
 
-    drivers = []  # each: {event_type, rank, direction, strength, decay, age_h, headline}
 
+def _keyword_drivers(instrument, articles, cfg, now_utc):
+    """LEGACY keyword classifier (SIGNAL_SOURCE='keyword', dormant fallback). Retired as the
+    default 3 Aug 2026 -- kept ~2 weeks behind the flag for one-line rollback, then deleted."""
+    drivers = []
     for a in articles:
         events = classify_article(a)
         if not events:
@@ -168,10 +181,6 @@ def build_signal(instrument, articles, calendar_events, now_utc=None, month_tren
                 continue          # matrix already scopes BOE->FTSE, BOJ->NIKKEI etc.
             rank = C.EVENT_RANK[etype]
             is_macro = etype in C.SCHEDULED_MACRO_EVENTS
-            # ATTRIBUTION GATE (3 Aug 2026): genuinely-global scheduled-macro central-bank
-            # decisions route to all matrix instruments (relevance floor kept). Everything
-            # else (geopolitical, data) must be genuinely relevant to THIS instrument --
-            # zero relevance contributes zero (no floor). Kills confident-noise.
             if is_macro:
                 eff_rel = max(rel, _GLOBAL_MACRO_FLOOR)
             else:
@@ -184,6 +193,23 @@ def build_signal(instrument, articles, calendar_events, now_utc=None, month_tren
             drivers.append({"event_type": etype, "rank": rank, "direction": direction,
                             "strength": strength, "decay": round(dec, 2), "age_h": round(age_h, 1),
                             "headline": (a.get("title") or "")[:120]})
+    return drivers
+
+
+def build_signal(instrument, articles, calendar_events, now_utc=None, month_trenders=None):
+    """Produce the net signal dict for one instrument. Event drivers come from Uther's AI
+    assessments (SIGNAL_SOURCE='uther', default) or the legacy keyword classifier ('keyword').
+    The discipline layer below (decay/conflict/cap/mixed/redirect/calendar) is IDENTICAL for
+    both, and Arthur's advisory format is unchanged. calendar_events: from calendar_checker."""
+    now_utc = now_utc or datetime.now(timezone.utc)
+    cfg = C.INSTRUMENTS.get(instrument)
+    if cfg is None:
+        return _neutral(instrument, now_utc)
+
+    if C.SIGNAL_SOURCE == "uther":
+        drivers = build_uther_drivers(instrument, now_utc)
+    else:
+        drivers = _keyword_drivers(instrument, articles, cfg, now_utc)
 
     # Calendar (rank 4): month/quarter end -> mild BEARISH on strong trenders (equities default).
     for ce in (calendar_events or []):
@@ -255,6 +281,8 @@ def build_signal(instrument, articles, calendar_events, now_utc=None, month_tren
         "mixed": mixed,
         "primary_event": primary["headline"] or primary["event_type"],
         "primary_type": primary["event_type"],
+        "uther_reasoning": primary.get("reasoning", ""),      # amalgamation: driving assessment
+        "source": primary.get("source", "keyword"),
         "secondary_event": (secondary["headline"] if secondary else None),
         "neutral_reason": ("Guinevere favours %s (+%d). Opposing setups get NO penalty -- "
                            "look for a %s setup; if none, trade normally."
@@ -272,6 +300,7 @@ def _neutral(instrument, now_utc, drivers=None):
         "modifier": 0, "favoured": "", "boost_direction": "", "redirect_direction": "",
         "redirect_modifier": 0, "opposing_modifier": 0,
         "mixed": bool(drivers), "primary_event": None, "primary_type": None,
+        "uther_reasoning": "", "source": "",
         "secondary_event": None,
         "neutral_reason": "No significant news -- your technical indicators carry full weight.",
         "decay_factor": 0.0, "drivers": drivers or [],

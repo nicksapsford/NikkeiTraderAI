@@ -951,6 +951,7 @@ function renderGuin2Compact(g){
     + '<span style="color:var(--muted);font-size:11px;">' + (g.confidence||'') + ev + '</span><br>'
     + '<span style="color:var(--muted);font-size:10px;">as of ' + (t||'--') + ' UTC</span>'
     + '<br><span style="font-size:10px;color:'+(g.feed_color=='GREEN'?'#3fb950':g.feed_color=='AMBER'?'#d29922':'#f85149')+';">&#9679; FEED '+(g.feed_age_hours==null?'STALE':g.feed_age_hours+'h')+' &middot; '+(g.feed_articles||0)+' art</span>'
+    + ((g.source && g.uther_reasoning) ? '<br><span style="color:var(--muted);font-size:9px;">via ' + g.source + ': ' + (g.uther_reasoning||'').replace(/</g,'&lt;').replace(/>/g,'&gt;') + '</span>' : '')
     + '</div></div>';
 }
 /* ── GUINEVERE NEWS panel (Part 5; polls /api/news every 60s) ───────────── */

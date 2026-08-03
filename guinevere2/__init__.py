@@ -18,7 +18,8 @@ from .guinevere2_main import (
     get_signal, get_advisory, format_dashboard, format_archie, log_decision, is_high_alert,
 )
 from .news_fetcher import feed_health
+from . import uther_source
 
 __all__ = ["get_signal", "get_advisory", "format_dashboard", "format_archie",
-           "log_decision", "is_high_alert", "feed_health"]
-__version__ = "2.3.0"   # FEED FIX + ATTRIBUTION FIX: word-boundary classify, relevance gating (3 Aug 2026)
+           "log_decision", "is_high_alert", "feed_health", "uther_source"]
+__version__ = "2.4.0"   # AMALGAMATION: Uther AI assessments as the event source, keyword classifier retired behind flag (3 Aug 2026)

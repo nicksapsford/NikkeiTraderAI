@@ -106,6 +106,8 @@ def format_dashboard(sig):
         "feed_age_hours": fh.get("age_hours"),
         "feed_articles": fh.get("num_articles", 0),
         "feed_newest": fh.get("newest_article_utc", ""),
+        "source": sig.get("source", ""),             # amalgamation: "Uther AI" / "keyword"
+        "uther_reasoning": (sig.get("uther_reasoning") or "")[:160],
     }
 
 
