@@ -575,12 +575,13 @@ def run_candle_tick(
         except Exception as _e:
             log.warning("Guinevere 2.0 logging failed: %s", _e)
 
-    # GUINEVERE HIGH-ALERT floor: on a relaxed (soft-check-bypassed) consult, require Arthur
-    # >= 60 confidence to enter -- a higher bar precisely because soft confirmation was relaxed.
+    # NEWS FAST PATH floor (Architecture B, 3 Aug 2026): on a relaxed (soft-check-bypassed)
+    # consult, require Arthur >= 65 confidence to enter -- a higher bar (was 60) precisely
+    # because soft confirmation was relaxed. Extra 5 points compensates for the relaxed checks.
     if guin_high_alert and decision.get("decision") in ("ENTER_LONG", "ENTER_SHORT"):
         try:
-            if float(decision.get("confidence") or 0) < 60:
-                log.warning("GUINEVERE HIGH ALERT: Arthur confidence %.0f < 60 on relaxed "
+            if float(decision.get("confidence") or 0) < 65:
+                log.warning("UTHER HIGH ALERT: Arthur confidence %.0f < 65 on relaxed "
                             "consult -- STAY_OUT.", float(decision.get("confidence") or 0))
                 decision["decision"] = "STAY_OUT"
                 decision["guinevere_high_alert_floor"] = True
@@ -596,12 +597,25 @@ def run_candle_tick(
 
     action = decision.get("decision", "STAY_OUT")
 
+    # News fast path (Architecture B): tag entries taken via the Uther HIGH-alert relaxed
+    # consult + log every fast-path consult (entry or stay-out) for the Uther dashboard/Gaius.
+    _fp_trigger = ""
+    if guin_high_alert:
+        _fp_trigger = ((guin_sig or {}).get("uther_reasoning")
+                       or (guin_sig or {}).get("primary_event") or "")[:160]
+        try:
+            _log_fast_path("NIKKEI", proposed_direction, action, decision.get("confidence"), _fp_trigger)
+        except Exception as _fe:
+            log.warning("fast-path log failed: %s", _fe)
+
     # --- Act on decision ---
     if action == "ENTER_LONG" and not stanley.in_trade:
-        _open_trade(stanley, account, ig, "LONG", nikkei_price, phase)
+        _open_trade(stanley, account, ig, "LONG", nikkei_price, phase,
+                    fast_path=guin_high_alert, fast_path_trigger=_fp_trigger)
 
     elif action == "ENTER_SHORT" and not stanley.in_trade:
-        _open_trade(stanley, account, ig, "SHORT", nikkei_price, phase)
+        _open_trade(stanley, account, ig, "SHORT", nikkei_price, phase,
+                    fast_path=guin_high_alert, fast_path_trigger=_fp_trigger)
 
     elif action == "EXIT" and stanley.in_trade:
         # Gaius Commission 012: capture the indicator snapshot + Arthur's exit confidence
@@ -693,6 +707,27 @@ def monitor_open_position(
 
 # ── Open / close helpers ──────────────────────────────────────────────────────
 
+def _log_fast_path(market, direction, arthur_decision, arthur_confidence, trigger) -> None:
+    """Append a row to logs/fast_path_log.csv for every Uther HIGH-alert (fast-path) consult --
+    the source for the Uther dashboard fast-path panel + Gaius separate assessment. UTC."""
+    import csv as _csv
+    path = LOG_DIR / "fast_path_log.csv"
+    hdr = ["timestamp_utc", "market", "direction", "arthur_decision",
+           "arthur_confidence", "entered", "uther_confidence", "trigger"]
+    entered = "TRUE" if arthur_decision in ("ENTER_LONG", "ENTER_SHORT") else "FALSE"
+    row = {"timestamp_utc": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S"),
+           "market": market, "direction": direction or "",
+           "arthur_decision": arthur_decision or "STAY_OUT",
+           "arthur_confidence": arthur_confidence if arthur_confidence is not None else "",
+           "entered": entered, "uther_confidence": "HIGH", "trigger": (trigger or "")[:160]}
+    exists = path.exists()
+    with open(path, "a", newline="", encoding="utf-8") as f:
+        w = _csv.DictWriter(f, fieldnames=hdr)
+        if not exists:
+            w.writeheader()
+        w.writerow(row)
+
+
 def _open_trade(
     stanley:  PaperTraderNikkei,
     account:  AccountState,
@@ -700,8 +735,12 @@ def _open_trade(
     direction: str,
     price:    float,
     phase:    str,
+    fast_path: bool = False,
+    fast_path_trigger: str = "",
 ) -> None:
-    trade = stanley.open_trade(direction, price, phase)
+    trade = stanley.open_trade(direction, price, phase,
+                               fast_path=fast_path, fast_path_trigger=fast_path_trigger,
+                               fast_path_uther_confidence=("HIGH" if fast_path else ""))
     if PAPER_TRADING_MODE:
         log.info("[PAPER] OPEN %s | entry=%.1f | stop=%.1f | target=%.1f | stake=£%.4f/pt",
                  direction, price, trade.stop_loss, trade.take_profit, trade.stake)

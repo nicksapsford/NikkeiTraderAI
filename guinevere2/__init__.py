@@ -22,4 +22,4 @@ from . import uther_source
 
 __all__ = ["get_signal", "get_advisory", "format_dashboard", "format_archie",
            "log_decision", "is_high_alert", "feed_health", "uther_source"]
-__version__ = "2.4.0"   # AMALGAMATION: Uther AI assessments as the event source, keyword classifier retired behind flag (3 Aug 2026)
+__version__ = "2.5.0"   # NEWS FAST PATH (Architecture B): UTHER HIGH ALERT header + 65 bar in is_high_alert (3 Aug 2026)

@@ -131,10 +131,25 @@ def is_high_alert(instrument, sig=None):
     try:
         sig = sig or get_signal(instrument)
         if sig.get("confidence") == "HIGH" and sig.get("modifier", 0) >= 20 and sig.get("favoured"):
-            note = ("GUINEVERE HIGH ALERT -- Active consultation. %s favours %s (+%d). SSL/"
-                    "momentum/candle alignment RELAXED -- Guinevere provides the direction. All "
-                    "RISK controls remain active. Score 60+ required to enter."
-                    % (instrument, sig["favoured"], sig["modifier"]))
+            reasoning = (sig.get("uther_reasoning") or sig.get("primary_event") or "")[:200]
+            if sig.get("source") == "Uther AI":
+                # NEWS FAST PATH (Architecture B, 3 Aug 2026): a HIGH Uther assessment forces a
+                # relaxed Arthur consult. Header + 65 bar per the fast-path brief.
+                note = (
+                    "*** UTHER HIGH ALERT -- NEWS FAST PATH ACTIVE ***\n"
+                    "This consultation was triggered by a HIGH-confidence Uther assessment, not by a\n"
+                    "Lancelot signal clear. SSL / momentum / candle alignment checks have been RELAXED.\n"
+                    "You must score 65 or above to enter -- a HIGHER bar than the normal 60, precisely\n"
+                    "because the soft checks are relaxed. If your indicators are strongly opposed --\n"
+                    "STAY_OUT. All RISK controls (kill switch, daily loss, consecutive losses, cooldown,\n"
+                    "session, daily-trend SSL, volatility) remain FULLY enforced.\n"
+                    "Uther's assessment (%s favoured, +%d): %s"
+                    % (sig["favoured"], sig["modifier"], reasoning))
+            else:
+                note = ("GUINEVERE HIGH ALERT -- Active consultation. %s favours %s (+%d). SSL/"
+                        "momentum/candle alignment RELAXED. All RISK controls remain active. "
+                        "Score 65+ required to enter."
+                        % (instrument, sig["favoured"], sig["modifier"]))
             return True, sig["favoured"], note
     except Exception:
         pass
