@@ -38,6 +38,143 @@ client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
 # Commission 003 real-data backtest (yfinance ^N225, 21 Jul 2026) and are
 # backtest-provisional -- revisit once live phantom/trade data accumulates.
 
+# ── Uther Direct Intelligence Feed (4 Aug 2026) ───────────────────────────────
+# Arthur reads the desk AI news analyst's own assessments directly (not just as a Guinevere
+# modifier). Source is the sibling amalgamation feed ../UtherAI/logs/uther_signals.json.
+UTHER_SIGNALS_PATH     = BASE_DIR.parent / "UtherAI" / "logs" / "uther_signals.json"
+FAST_PATH_LOG          = BASE_DIR / "logs" / "fast_path_log.csv"
+UTHER_INSTRUMENT       = "NIKKEI"    # this trader's Uther instrument key
+UTHER_MAX_FEED_AGE_MIN = 30.0      # feed older than this -> treated as offline (fail-safe)
+
+_UTHER_FAILSAFE = ("UTHER INTELLIGENCE BRIEFING\n"
+                   "  No current intelligence. Feed offline or no significant news. "
+                   "Trade on indicators and Guinevere only.")
+
+
+def _uther_fast_path_count_today():
+    """(consults_today, entries_today) from this trader's fast_path_log.csv (UTC). Never raises."""
+    try:
+        import csv as _csv
+        if not FAST_PATH_LOG.exists():
+            return 0, 0
+        today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        consults = entries = 0
+        with open(FAST_PATH_LOG, newline="", encoding="utf-8") as f:
+            for r in _csv.DictReader(f):
+                if (r.get("timestamp_utc") or "").startswith(today):
+                    consults += 1
+                    if (r.get("entered") or "").upper() == "TRUE":
+                        entries += 1
+        return consults, entries
+    except Exception:
+        return 0, 0
+
+
+def _uther_line(conf, inst, direction, duration, reasoning, confirm, invalidate) -> str:
+    lines = [f"  [{conf}] {inst} -- {direction} -- {duration}"]
+    if reasoning:
+        lines.append(f"      {reasoning[:260]}")
+    tail = []
+    if confirm:
+        tail.append(f"Confirms if: {confirm[:120]}")
+    if invalidate:
+        tail.append(f"Invalidates if: {invalidate[:120]}")
+    if tail:
+        lines.append("      " + "   ".join(tail))
+    return "\n".join(lines)
+
+
+def get_uther_briefing(instrument: str = UTHER_INSTRUMENT) -> str:
+    """Direct Uther intelligence section, injected BETWEEN the decision hierarchy and the
+    Guinevere advisory. Reads the sibling feed ../UtherAI/logs/uther_signals.json. Includes
+    HIGH/MEDIUM assessments for ALL instruments plus LOW assessments for `instrument` only;
+    excludes NEUTRAL/NONE directions and other-instrument LOW noise. Fail-safe (feed missing/
+    empty/stale >30min/unparseable) -> a fixed 'no intelligence' note so Arthur is never
+    blocked or delayed. NEVER raises. ALL TIMES UTC."""
+    try:
+        with open(UTHER_SIGNALS_PATH, encoding="utf-8") as f:
+            feed = json.load(f)
+    except Exception:
+        return _UTHER_FAILSAFE
+
+    try:
+        gen = feed.get("generated_utc") or ""
+        gen_dt = datetime.strptime(gen, "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc)
+        age_min = (datetime.now(timezone.utc) - gen_dt).total_seconds() / 60.0
+    except Exception:
+        return _UTHER_FAILSAFE
+    if age_min > UTHER_MAX_FEED_AGE_MIN:
+        return _UTHER_FAILSAFE
+
+    inst = (instrument or "").upper()
+    primary, cross, calendar = [], [], []
+    last_ts = ""
+    _rankw = {"HIGH": 0, "MEDIUM": 1, "LOW": 2}
+    for a in (feed.get("assessments") or []):
+        ts = a.get("timestamp_utc") or ""
+        if ts > last_ts:
+            last_ts = ts
+        etype      = (a.get("event_type") or "").upper()
+        duration   = a.get("duration") or "short"
+        reasoning  = (a.get("reasoning") or "").strip()
+        confirm    = (a.get("confirm_signal") or "").strip()
+        invalidate = (a.get("invalidate_signal") or "").strip()
+        headline   = (a.get("headline") or "").strip()
+        for p in (a.get("per_instrument") or []):
+            pinst = (p.get("instrument") or "").upper()
+            pdir  = (p.get("direction") or "").upper()
+            pconf = (p.get("confidence") or "LOW").upper()
+            if pdir not in ("LONG", "SHORT"):
+                continue                                   # exclude NEUTRAL/NONE
+            is_primary = (pinst == inst)
+            if not is_primary and pconf not in ("HIGH", "MEDIUM"):
+                continue                                   # other-instrument LOW excluded
+            line = _uther_line(pconf, pinst, pdir, duration, reasoning, confirm, invalidate)
+            (primary if is_primary else cross).append((_rankw.get(pconf, 3), line))
+            if etype == "CALENDAR" and headline:
+                calendar.append(f"    - [{pconf}] {pinst} {pdir}: {headline}")
+
+    consults, entries = _uther_fast_path_count_today()
+    gen_disp  = gen_dt.strftime("%Y-%m-%d %H:%M")
+    last_disp = last_ts[:16] if last_ts else "n/a"
+
+    if not primary and not cross:
+        return (f"UTHER INTELLIGENCE BRIEFING -- {gen_disp} UTC\n"
+                f"  No active directional intelligence for {inst} or the wider desk right now.\n"
+                f"  FAST PATH TODAY: {consults} Uther fast-path consult(s), {entries} entered.\n"
+                "  Trade on your indicators and Guinevere; Uther has nothing material to add.")
+
+    primary.sort(key=lambda t: t[0])
+    cross.sort(key=lambda t: t[0])
+
+    out = [f"UTHER INTELLIGENCE BRIEFING -- {gen_disp} UTC",
+           "(Uther is the desk's AI news analyst reading the live wire. This is direct macro",
+           " intelligence, NOT a scored modifier -- weigh it in your reasoning.)",
+           ""]
+    if primary:
+        out.append(f"ACTIVE ASSESSMENTS -- {inst} (your instrument)")
+        out += [ln for _, ln in primary]
+        out.append("")
+    if cross:
+        out.append("CROSS-MARKET (other instruments, HIGH/MEDIUM only -- macro context)")
+        out += [ln for _, ln in cross]
+        out.append("")
+    if calendar:
+        out.append("SCHEDULED-EVENT NEWS (Uther-flagged; your own economic calendar is separate)")
+        out += calendar
+        out.append("")
+    out.append(f"FAST PATH TODAY: {consults} Uther fast-path consult(s), {entries} entered.")
+    out.append(f"Last Uther assessment: {last_disp} UTC")
+    out += ["",
+            "HOW TO USE THIS BRIEFING",
+            "  - Uther intel is macro context that leads your indicators -- news moves price first.",
+            "  - Your instrument's assessments are primary; cross-market items set the macro tone.",
+            "  - Uther CONFIRMS or REDIRECTS. Never let the briefing ALONE force a STAY_OUT --",
+            "    you still need indicator-based reasons (mirrors the Guinevere five rules).",
+            "  - Where Uther and Guinevere agree with your setup, enter with conviction."]
+    return "\n".join(out)
+
+
 SYSTEM_PROMPT = """You are Arthur, the AI trading brain for NikkeiTrader AI.
 Your job is to analyse Japan 225 market conditions and decide whether to
 ENTER_LONG, ENTER_SHORT, HOLD an existing position, EXIT, or STAY_OUT.
@@ -196,6 +333,19 @@ As floating profit builds, the trailing stop tightens to guarantee a minimum flo
   Step 3: Float >= £45 (450pt) -> stop tightens to guarantee a £40 floor.
 The position cannot close below the locked floor unless a gap event occurs. Reference
 the current ladder status in your HOLD reasoning.
+
+UTHER INTELLIGENCE BRIEFING (direct AI news analysis -- 4 Aug 2026)
+Above the market data you also receive an UTHER INTELLIGENCE BRIEFING: the desk's dedicated
+AI news analyst's own reading of the live wire, given as plain intelligence rather than a
+scored modifier. Uther reads the actual articles and reasons about specific opportunities.
+  -> Treat it like Guinevere's macro level -- it LEADS your indicators (news moves price
+     before the charts catch up), but it CONFIRMS or REDIRECTS; it never blocks.
+  -> Your own instrument's Uther assessments are primary; the CROSS-MARKET items are macro
+     context (e.g. a HIGH/MEDIUM SHORT call on US500 colours the risk tone for your instrument).
+  -> Never let Uther's briefing ALONE force a STAY_OUT -- exactly as with Guinevere, you need
+     indicator-based reasons. Uther + Guinevere + aligned indicators = enter with conviction.
+  -> If the briefing says "no current intelligence / feed offline", ignore it and trade on
+     your indicators and Guinevere as normal.
 
 HARD RULES -- NEVER VIOLATE
 1.  Check DAILY SSL first -- it sets the allowed direction for today.
@@ -371,6 +521,13 @@ def get_trading_decision(
     # before the indicators, per the DECISION HIERARCHY.
     if guinevere_advisory:
         user_message = guinevere_advisory + "\n\n" + user_message
+    # Uther Direct Intelligence Feed (4 Aug 2026): the analyst's own briefing sits ABOVE the
+    # Guinevere advisory (order: decision hierarchy [cached system prompt] -> Uther briefing ->
+    # Guinevere advisory -> indicators -> Morgan). UNCACHED (dynamic) -- never touches the
+    # cached SYSTEM_PROMPT prefix. get_uther_briefing is fail-safe and always returns a string.
+    uther_briefing = get_uther_briefing(UTHER_INSTRUMENT)
+    if uther_briefing:
+        user_message = uther_briefing + "\n\n" + user_message
 
     for attempt in range(2):
         try:
