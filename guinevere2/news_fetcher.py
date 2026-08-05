@@ -126,6 +126,33 @@ def _macro_feed():
     return [], False
 
 
+# Single-stock noise pre-filter (Fix 1, 5 Aug 2026) -- PARITY with Uther's news_fetcher_uther
+# per CODY_STANDING Rule 18. guinevere2 makes no Claude calls (rule-based; dormant behind the
+# amalgamation flag), so this is a consistency measure only: single-stock earnings/screener/
+# profile articles are dropped from the assembled set before the keyword-scoring path.
+_EXCLUDE_PATTERNS = [
+    "q1 earnings call", "q2 earnings call", "q3 earnings call", "q4 earnings call",
+    "earnings call", "earnings transcript",
+    "analyst questions", "earnings call recap", "top 5 analyst", "key analyst",
+    "stock to watch", "stocks to watch", "bond profile", "cusip", "bond metrics",
+    "key metrics", "instrument profile",
+    "price target", "analyst upgrade", "analyst downgrade", "insider selling", "insider buying",
+    "shares sold", "dividend declared", "dividend announced", "stock split", "buyback announced",
+    "deploys ai platform", "launches ai", "partners with", "signs agreement with",
+    "q1 results", "q2 results", "q3 results", "quarterly results", "full year results",
+]
+_WHITELIST_OVERRIDE = ["s&p", "ftse", "nikkei", "index", "market rally", "sector",
+                       "broad market", "economy"]
+
+
+def _is_single_stock_noise(a):
+    try:
+        text = ((a.get("title") or "") + " " + (a.get("summary") or "")).lower()
+        return any(p in text for p in _EXCLUDE_PATTERNS) and not any(w in text for w in _WHITELIST_OVERRIDE)
+    except Exception:
+        return False
+
+
 def _live_fetch(cfg, instrument, limit):
     """Merge ticker + topics + universal-macro queries, deduped by url.
     Returns (articles, contacted) -- contacted True if ANY sub-query reached AV."""
@@ -149,7 +176,7 @@ def _live_fetch(cfg, instrument, limit):
     for a in macro:
         if a.get("url"):
             by_url[a["url"]] = a
-    return list(by_url.values()), contacted
+    return [a for a in by_url.values() if not _is_single_stock_noise(a)], contacted   # Fix 1 parity
 
 
 def fetch(instrument, limit=50):
