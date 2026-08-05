@@ -141,7 +141,7 @@ _MARKET_MOVING_TICKERS = {
     "XOM", "CVX", "COP",
     "UNH", "ORCL", "CRM", "NFLX", "V", "MA",
     "HSBC", "AZN", "SHEL", "BP", "RIO", "UL", "BHP", "GSK", "DEO", "NGG", "BCS", "LYG",
-    "GLEN", "GLNCY", "AAL", "ANTO", "BAESY", "RYCEY", "BATS", "BTI",
+    "GLEN", "GLNCY", "NGLOY", "ANTO", "BAESY", "RYCEY", "BATS", "BTI",
     "TM", "SONY", "NTDOY", "SFTBY", "HMC", "MUFG", "SMFG", "NMR", "FANUY", "KYOCY",
 }
 
