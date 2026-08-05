@@ -1736,7 +1736,7 @@ def api_state():
 
     payload = {
         "mode":            s.get("mode", "PAPER"),
-        "version":         s.get("version", APP_VERSION),
+        "version":         APP_VERSION,
         "phase":           s.get("phase", "--"),
         "nikkei_level":      s.get("nikkei_level", 0.0),
         "connector_status": s.get("connector_status", "yahoo"),

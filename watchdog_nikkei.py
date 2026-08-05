@@ -273,6 +273,13 @@ class Watchdog:
         log.info("  Heartbeat:   every %d min", HEARTBEAT_EVERY // 60)
         log.info("  Log:         %s", LOG_FILE)
         log.info("=" * 60)
+        # 5 Aug 2026: clear a STALE shutdown.flag at startup. A flag left by a prior
+        # maintenance shutdown (that the watchdog didn't get to unlink) would otherwise make
+        # this fresh watchdog stop the engine and exit on its first loop -- leaving only the
+        # dashboard up. A fresh launch means the leftover stop-request is stale.
+        if SHUTDOWN_FLAG.exists():
+            log.warning("Clearing stale shutdown.flag at startup.")
+            SHUTDOWN_FLAG.unlink(missing_ok=True)
         try:
             self._launch()
         except Exception as exc:
