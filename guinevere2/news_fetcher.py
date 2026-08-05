@@ -126,29 +126,30 @@ def _macro_feed():
     return [], False
 
 
-# Single-stock noise pre-filter (Fix 1, 5 Aug 2026) -- PARITY with Uther's news_fetcher_uther
-# per CODY_STANDING Rule 18. guinevere2 makes no Claude calls (rule-based; dormant behind the
-# amalgamation flag), so this is a consistency measure only: single-stock earnings/screener/
-# profile articles are dropped from the assembled set before the keyword-scoring path.
-_EXCLUDE_PATTERNS = [
-    "q1 earnings call", "q2 earnings call", "q3 earnings call", "q4 earnings call",
-    "earnings call", "earnings transcript",
-    "analyst questions", "earnings call recap", "top 5 analyst", "key analyst",
-    "stock to watch", "stocks to watch", "bond profile", "cusip", "bond metrics",
-    "key metrics", "instrument profile",
-    "price target", "analyst upgrade", "analyst downgrade", "insider selling", "insider buying",
-    "shares sold", "dividend declared", "dividend announced", "stock split", "buyback announced",
-    "deploys ai platform", "launches ai", "partners with", "signs agreement with",
-    "q1 results", "q2 results", "q3 results", "quarterly results", "full year results",
-]
-_WHITELIST_OVERRIDE = ["s&p", "ftse", "nikkei", "index", "market rally", "sector",
-                       "broad market", "economy"]
+# Single-stock noise pre-filter (5 Aug 2026, ticker-based) -- PARITY with Uther's
+# news_fetcher_uther per CODY_STANDING Rule 18. guinevere2 makes no Claude calls (rule-based;
+# dormant behind the amalgamation flag), so this is a consistency measure only. A bracketed
+# ticker in the HEADLINE that is NOT a market-moving heavyweight -> single-stock noise, dropped
+# from the assembled set. No bracketed ticker -> kept (macro/index news never blocked). Keep
+# _MARKET_MOVING_TICKERS in sync with UtherAI/config_uther.py MARKET_MOVING_TICKERS.
+_TICKER_RE = re.compile(r"[\[(]\s*([A-Z]{2,5})\s*[\])]")
+_MARKET_MOVING_TICKERS = {
+    "NVDA", "MSFT", "AAPL", "GOOGL", "GOOG", "AMZN", "META", "AVGO", "MU", "AMD", "TSLA",
+    "TSM", "INTC", "QCOM", "ORCL", "CRM", "NFLX", "JPM", "XOM", "LLY", "UNH", "MRVL", "ASML",
+    "HSBC", "AZN", "SHEL", "BP", "RIO", "UL", "BHP", "GSK", "DEO", "NGG", "BCS", "LYG",
+    "BAESY", "RYCEY", "GLNCY", "NGLOY",
+    "TM", "SONY", "NTDOY", "SFTBY", "HMC", "MUFG", "SMFG",
+}
 
 
 def _is_single_stock_noise(a):
     try:
-        text = ((a.get("title") or "") + " " + (a.get("summary") or "")).lower()
-        return any(p in text for p in _EXCLUDE_PATTERNS) and not any(w in text for w in _WHITELIST_OVERRIDE)
+        title = a.get("title")
+        title = title if isinstance(title, str) else ("" if title is None else str(title))
+        tickers = _TICKER_RE.findall(title.upper())
+        if not tickers:
+            return False
+        return not any(t in _MARKET_MOVING_TICKERS for t in tickers)
     except Exception:
         return False
 
