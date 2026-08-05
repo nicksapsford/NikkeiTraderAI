@@ -133,12 +133,16 @@ def _macro_feed():
 # from the assembled set. No bracketed ticker -> kept (macro/index news never blocked). Keep
 # _MARKET_MOVING_TICKERS in sync with UtherAI/config_uther.py MARKET_MOVING_TICKERS.
 _TICKER_RE = re.compile(r"[\[(]\s*([A-Z]{2,5})\s*[\])]")
+# CONFIRMED by Nick/Archie 5 Aug 2026 -- MUST mirror UtherAI/config_uther.py MARKET_MOVING_TICKERS.
 _MARKET_MOVING_TICKERS = {
-    "NVDA", "MSFT", "AAPL", "GOOGL", "GOOG", "AMZN", "META", "AVGO", "MU", "AMD", "TSLA",
-    "TSM", "INTC", "QCOM", "ORCL", "CRM", "NFLX", "JPM", "XOM", "LLY", "UNH", "MRVL", "ASML",
+    "NVDA", "AAPL", "MSFT", "AMZN", "GOOGL", "GOOG", "META", "TSLA", "AVGO", "LLY", "BRK", "BRKB",
+    "AMD", "MU", "INTC", "QCOM", "TSM", "ASML", "MRVL", "ARM",
+    "JPM", "BAC", "GS", "MS",
+    "XOM", "CVX", "COP",
+    "UNH", "ORCL", "CRM", "NFLX", "V", "MA",
     "HSBC", "AZN", "SHEL", "BP", "RIO", "UL", "BHP", "GSK", "DEO", "NGG", "BCS", "LYG",
-    "BAESY", "RYCEY", "GLNCY", "NGLOY",
-    "TM", "SONY", "NTDOY", "SFTBY", "HMC", "MUFG", "SMFG",
+    "GLEN", "GLNCY", "AAL", "ANTO", "BAESY", "RYCEY", "BATS", "BTI",
+    "TM", "SONY", "NTDOY", "SFTBY", "HMC", "MUFG", "SMFG", "NMR", "FANUY", "KYOCY",
 }
 
 
