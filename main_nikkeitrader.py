@@ -53,6 +53,12 @@ for _cand in _ENV_CANDIDATES:
 else:
     load_dotenv()
 
+# DATA-ONLY DEMOTION (8 Aug 2026): Arthur (Claude API) is net -£72.90 on Nikkei vs benchmark +£59.13 --
+# Uther's English feed cannot cover Japanese macro (BoJ, yen carry, Tokyo CPI, Tankan). Gate Arthur to
+# stop the API bleed (~£1.50-2.00/day). Lancelot pre-checks + Morgan + phantom logging continue (data
+# preserved for the Oct quarterly). NikkeiBenchmark (:5028) unaffected. Re-activate = set False, no code.
+NIKKEI_DATA_ONLY = os.getenv("NIKKEI_DATA_ONLY", "True").strip().lower() in ("1", "true", "yes", "on")
+
 # ─── ALBION STANDING RULE: ALL LOG TIMESTAMPS ARE UTC ────────────────────────
 # Force Python's logging to emit %(asctime)s in UTC, not BST/local. Without this
 # line, logging defaults to local time and every log line is +1h vs the UTC CSV
@@ -536,6 +542,42 @@ def run_candle_tick(
                             indicators_1d=ind_1d, indicators_1h=ind_1h, indicators_5m=ind_5m)
             return
 
+    # ── DATA-ONLY DEMOTION gate (8 Aug 2026) ──────────────────────────────────────────────────
+    # For NEW entries, skip the Arthur (Claude API) consult entirely -- zero API cost. Record the
+    # Lancelot-cleared signal as a phantom (Oct quarterly) and return. Any trade already OPEN falls
+    # through below so Arthur manages its exit safely; since no new entries open in data-only mode,
+    # this winds down to zero Arthur consults. Re-activate = NIKKEI_DATA_ONLY=False.
+    if NIKKEI_DATA_ONLY and not stanley.in_trade:
+        _dir = proposed_direction if proposed_direction in ("LONG", "SHORT") else ("LONG" if bar_1d.get("ssl_bull") else "SHORT")
+        try:
+            try:
+                _guin_score = guinevere_news.fetch_nikkei_sentiment().get("score")
+            except Exception:
+                _guin_score = None
+            _snap = phantom_tracker.build_snapshot(
+                ind_1d, ind_1h, ind_5m,
+                morgan_score=performance_nikkei.get_confidence(), session=phase, guinevere_score=_guin_score)
+        except Exception:
+            _snap = None
+        try:
+            _bstate, _bavail = benchmark_link.read_availability()
+        except Exception:
+            _bstate, _bavail = ("UNKNOWN", None)
+        try:
+            phantom_tracker.record_decision(
+                market="Nikkei", direction_blocked=_dir, price_at_decision=nikkei_price,
+                confidence=None, reason_for_stay_out="DATA_ONLY_DEMOTED",
+                get_price_fn=lambda m: _get_price(ig, feed), indicators=_snap,
+                benchmark_state=_bstate, benchmark_available=_bavail)
+        except Exception as _exc:
+            log.warning("data-only phantom record failed: %s", _exc)
+        _push_dashboard(stanley, account, pre_checks=individual_checks, phase=phase,
+                        nikkei_level=nikkei_price, calendar_summary=cal_summary,
+                        connector_status=connector_status, panel_mode="pre_checks",
+                        trend_1d=trend_1d, trend_1h=sig_1h, signal_5m=sig_5m,
+                        indicators_1d=ind_1d, indicators_1h=ind_1h, indicators_5m=ind_5m)
+        return
+
     # Guinevere 2.0 -- directional macro intelligence for Arthur (Commission 018).
     # Replaces the old +/-8 news adjustment: Guinevere 2.0 advises Arthur IN THE PROMPT
     # (DECISION HIERARCHY) and Arthur sets his own confidence (Principle 14). Fail-safe:
@@ -978,6 +1020,9 @@ def main() -> None:
     SHUTDOWN_FLAG.unlink(missing_ok=True)
 
     log.info("NikkeiTrader AI is running. Ctrl+C to stop.")
+    if NIKKEI_DATA_ONLY:
+        log.warning("*** DATA-ONLY MODE (NIKKEI_DATA_ONLY=True) -- Arthur/Claude GATED for new entries. "
+                    "Zero API cost; Lancelot + Morgan + phantom logging continue. Re-activate = set False. ***")
     log.info("Dashboard: http://localhost:5008  (start dashboard_nikkei.py separately)")
 
     last_candle_tick    = 0.0
